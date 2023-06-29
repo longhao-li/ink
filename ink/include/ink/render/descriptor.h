@@ -238,7 +238,7 @@ public:
 
     /// @brief
     ///   Allow implicit conversion to CPU descriptor handle.
-    operator CpuDescriptorHandle() noexcept {
+    operator CpuDescriptorHandle() const noexcept {
         return m_handle;
     }
 
@@ -343,7 +343,7 @@ public:
 
     /// @brief
     ///   Allow implicit conversion to CPU descriptor handle.
-    operator CpuDescriptorHandle() noexcept {
+    operator CpuDescriptorHandle() const noexcept {
         return m_handle;
     }
 
@@ -445,7 +445,7 @@ public:
 
     /// @brief
     ///   Allow implicit conversion to CPU descriptor handle.
-    operator CpuDescriptorHandle() noexcept {
+    operator CpuDescriptorHandle() const noexcept {
         return m_handle;
     }
 
@@ -547,7 +547,7 @@ public:
 
     /// @brief
     ///   Allow implicit conversion to CPU descriptor handle.
-    operator CpuDescriptorHandle() noexcept {
+    operator CpuDescriptorHandle() const noexcept {
         return m_handle;
     }
 
