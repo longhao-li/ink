@@ -166,6 +166,7 @@
     <ClInclude Include="include\ink\render\descriptor.h" />
     <ClInclude Include="include\ink\render\device.h" />
     <ClInclude Include="include\ink\render\resource.h" />
+    <ClInclude Include="include\ink\render\swap_chain.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\core\exception.cpp" />
@@ -176,6 +177,7 @@
     <ClCompile Include="src\render\descriptor.cpp" />
     <ClCompile Include="src\render\device.cpp" />
     <ClCompile Include="src\render\resource.cpp" />
+    <ClCompile Include="src\render\swap_chain.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
