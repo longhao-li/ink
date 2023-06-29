@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ink/core/common.h"
+
 #include <d3d12.h>
 
 #include <cstddef>
@@ -123,7 +125,7 @@ public:
     ///
     /// @param other
     ///   The constant buffer view to be copied from.
-    ConstantBufferView(const ConstantBufferView &other) noexcept;
+    InkApi ConstantBufferView(const ConstantBufferView &other) noexcept;
 
     /// @brief
     ///   Copy assignment of constant buffer view.
@@ -136,7 +138,7 @@ public:
     ///
     /// @return
     ///   Reference to this constant buffer view.
-    auto operator=(const ConstantBufferView &other) noexcept -> ConstantBufferView &;
+    InkApi auto operator=(const ConstantBufferView &other) noexcept -> ConstantBufferView &;
 
     /// @brief
     ///   Move constructor of constant buffer view.
@@ -155,11 +157,11 @@ public:
     ///
     /// @return
     ///   Reference to this constant buffer view.
-    auto operator=(ConstantBufferView &&other) noexcept -> ConstantBufferView &;
+    InkApi auto operator=(ConstantBufferView &&other) noexcept -> ConstantBufferView &;
 
     /// @brief
     ///   Destroy this constant buffer view and free the descriptor handle.
-    ~ConstantBufferView() noexcept;
+    InkApi ~ConstantBufferView() noexcept;
 
     /// @brief
     ///   Create a constant buffer view in place.
@@ -170,7 +172,7 @@ public:
     ///   GPU address of the constant buffer view.
     /// @param size
     ///   Size in byte of the constant buffer view.
-    auto initConstantBuffer(std::uint64_t gpuAddress, std::uint32_t size) noexcept -> void;
+    InkApi auto initConstantBuffer(std::uint64_t gpuAddress, std::uint32_t size) noexcept -> void;
 
     /// @brief
     ///   Create a constant buffer view in place.
@@ -179,7 +181,7 @@ public:
     ///
     /// @param desc
     ///   A description structure that describes how to create the constant buffer view.
-    auto initConstantBuffer(const D3D12_CONSTANT_BUFFER_VIEW_DESC &desc) noexcept -> void;
+    InkApi auto initConstantBuffer(const D3D12_CONSTANT_BUFFER_VIEW_DESC &desc) noexcept -> void;
 
     /// @brief
     ///   Create a shader resource view in place.
@@ -192,8 +194,8 @@ public:
     /// @param desc
     ///   Nullable. A description structure that describes how to create this shader resource view.
     ///   @p resource must be non-null if @p desc is null.
-    auto initShaderResource(ID3D12Resource                        *resource,
-                            const D3D12_SHADER_RESOURCE_VIEW_DESC *desc) noexcept -> void;
+    InkApi auto initShaderResource(ID3D12Resource                        *resource,
+                                   const D3D12_SHADER_RESOURCE_VIEW_DESC *desc) noexcept -> void;
 
     /// @brief
     ///   Create an unordered access view in place.
@@ -208,9 +210,9 @@ public:
     /// @param desc
     ///   Nullable. A description structure that describes how to create this unordered access view.
     ///   @p resource must be non-null if @p desc is null.
-    auto initUnorderedAccess(ID3D12Resource                         *resource,
-                             ID3D12Resource                         *counter,
-                             const D3D12_UNORDERED_ACCESS_VIEW_DESC *desc) noexcept -> void;
+    InkApi auto initUnorderedAccess(ID3D12Resource                         *resource,
+                                    ID3D12Resource                         *counter,
+                                    const D3D12_UNORDERED_ACCESS_VIEW_DESC *desc) noexcept -> void;
 
     /// @brief
     ///   Checks if this is a null constant buffer view.
@@ -270,7 +272,7 @@ public:
     ///
     /// @param other
     ///   The sampler view to be copied from.
-    SamplerView(const SamplerView &other) noexcept;
+    InkApi SamplerView(const SamplerView &other) noexcept;
 
     /// @brief
     ///   Copy assignment of sampler view.
@@ -283,7 +285,7 @@ public:
     ///
     /// @return
     ///   Reference to this sampler view.
-    auto operator=(const SamplerView &other) noexcept -> SamplerView &;
+    InkApi auto operator=(const SamplerView &other) noexcept -> SamplerView &;
 
     /// @brief
     ///   Move constructor of sampler view.
@@ -302,11 +304,11 @@ public:
     ///
     /// @return
     ///   Reference to this sampler view.
-    auto operator=(SamplerView &&other) noexcept -> SamplerView &;
+    InkApi auto operator=(SamplerView &&other) noexcept -> SamplerView &;
 
     /// @brief
     ///   Destroy this sampler view and free the descriptor handle.
-    ~SamplerView() noexcept;
+    InkApi ~SamplerView() noexcept;
 
     /// @brief
     ///   Create a new sampler view in place.
@@ -315,7 +317,7 @@ public:
     ///
     /// @param desc
     ///   A description structure that describes how to create this sampler view.
-    auto initSampler(const D3D12_SAMPLER_DESC &desc) noexcept -> void;
+    InkApi auto initSampler(const D3D12_SAMPLER_DESC &desc) noexcept -> void;
 
     /// @brief
     ///   Checks if this is a null sampler view.
@@ -367,7 +369,7 @@ public:
     ///
     /// @param other
     ///   The render target view to be copied from.
-    RenderTargetView(const RenderTargetView &other) noexcept;
+    InkApi RenderTargetView(const RenderTargetView &other) noexcept;
 
     /// @brief
     ///   Copy assignment of render target view.
@@ -380,7 +382,7 @@ public:
     ///
     /// @return
     ///   Reference to this render target view.
-    auto operator=(const RenderTargetView &other) noexcept -> RenderTargetView &;
+    InkApi auto operator=(const RenderTargetView &other) noexcept -> RenderTargetView &;
 
     /// @brief
     ///   Move constructor of render target view.
@@ -399,11 +401,11 @@ public:
     ///
     /// @return
     ///   Reference to this render target view.
-    auto operator=(RenderTargetView &&other) noexcept -> RenderTargetView &;
+    InkApi auto operator=(RenderTargetView &&other) noexcept -> RenderTargetView &;
 
     /// @brief
     ///   Destroy this render target view and free the descriptor handle.
-    ~RenderTargetView() noexcept;
+    InkApi ~RenderTargetView() noexcept;
 
     /// @brief
     ///   Create a render target view in place.
@@ -416,8 +418,8 @@ public:
     /// @param desc
     ///   Nullable. A description structure that describes how to create this render target view. @p
     ///   resource must be non-null if @p desc is null.
-    auto initRenderTarget(ID3D12Resource                      *resource,
-                          const D3D12_RENDER_TARGET_VIEW_DESC *desc) noexcept -> void;
+    InkApi auto initRenderTarget(ID3D12Resource                      *resource,
+                                 const D3D12_RENDER_TARGET_VIEW_DESC *desc) noexcept -> void;
 
     /// @brief
     ///   Checks if this is a null render target view.
@@ -469,7 +471,7 @@ public:
     ///
     /// @param other
     ///   The depth stencil view to be copied from.
-    DepthStencilView(const DepthStencilView &other) noexcept;
+    InkApi DepthStencilView(const DepthStencilView &other) noexcept;
 
     /// @brief
     ///   Copy assignment of depth stencil view.
@@ -482,7 +484,7 @@ public:
     ///
     /// @return
     ///   Reference to this depth stencil view.
-    auto operator=(const DepthStencilView &other) noexcept -> DepthStencilView &;
+    InkApi auto operator=(const DepthStencilView &other) noexcept -> DepthStencilView &;
 
     /// @brief
     ///   Move constructor of depth stencil view.
@@ -501,11 +503,11 @@ public:
     ///
     /// @return
     ///   Reference to this depth stencil view.
-    auto operator=(DepthStencilView &&other) noexcept -> DepthStencilView &;
+    InkApi auto operator=(DepthStencilView &&other) noexcept -> DepthStencilView &;
 
     /// @brief
     ///   Destroy this depth stencil view and free the descriptor handle.
-    ~DepthStencilView() noexcept;
+    InkApi ~DepthStencilView() noexcept;
 
     /// @brief
     ///   Create a depth stencil view in place.
@@ -518,8 +520,8 @@ public:
     /// @param desc
     ///   Nullable. A description structure that describes how to create this depth stencil view. @p
     ///   resource must be non-null if @p desc is null.
-    auto initDepthStencil(ID3D12Resource                      *resource,
-                          const D3D12_DEPTH_STENCIL_VIEW_DESC *desc) noexcept -> void;
+    InkApi auto initDepthStencil(ID3D12Resource                      *resource,
+                                 const D3D12_DEPTH_STENCIL_VIEW_DESC *desc) noexcept -> void;
 
     /// @brief
     ///   Checks if this is a null depth stencil view.

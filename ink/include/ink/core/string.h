@@ -12,7 +12,7 @@
 
 namespace ink {
 
-class StringView {
+class InkApi StringView {
 public:
     using traits_type     = std::char_traits<char16_t>;
     using value_type      = char16_t;
@@ -870,7 +870,7 @@ struct fmt::formatter<ink::StringView, char16_t>
 
 namespace ink {
 
-class String {
+class InkApi String {
 public:
     using traits_type     = std::char_traits<char16_t>;
     using value_type      = char16_t;
@@ -1985,11 +1985,11 @@ inline auto operator>=(const char16_t *lhs, const String &rhs) noexcept -> bool 
     return StringView(lhs) >= StringView(rhs);
 }
 
-auto operator+(const String &lhs, const String &rhs) noexcept -> String;
-auto operator+(const String &lhs, StringView rhs) noexcept -> String;
-auto operator+(StringView lhs, const String &rhs) noexcept -> String;
-auto operator+(const String &lhs, const wchar_t *rhs) noexcept -> String;
-auto operator+(const wchar_t *lhs, const String &rhs) noexcept -> String;
+InkApi auto operator+(const String &lhs, const String &rhs) noexcept -> String;
+InkApi auto operator+(const String &lhs, StringView rhs) noexcept -> String;
+InkApi auto operator+(StringView lhs, const String &rhs) noexcept -> String;
+InkApi auto operator+(const String &lhs, const char16_t *rhs) noexcept -> String;
+InkApi auto operator+(const char16_t *lhs, const String &rhs) noexcept -> String;
 
 /// @brief
 ///   Format pattern string with compile-time argument check.

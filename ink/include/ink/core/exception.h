@@ -19,7 +19,7 @@ class Exception : public std::exception {
 public:
     /// @brief
     ///   Create an empty exception object.
-    Exception() noexcept;
+    InkApi Exception() noexcept;
 
     /// @brief
     ///   Create an exception object with source location.
@@ -28,7 +28,7 @@ public:
     ///
     /// @param loc
     ///   Source location of the exception.
-    Exception(SourceLocation loc) noexcept;
+    InkApi Exception(SourceLocation loc) noexcept;
 
     /// @brief
     ///   Create an exception object with error message.
@@ -37,7 +37,7 @@ public:
     ///
     /// @param message
     ///   Error message of this exception.
-    Exception(String message) noexcept;
+    InkApi Exception(String message) noexcept;
 
     /// @brief
     ///   Create an exception with source location and error message.
@@ -46,14 +46,14 @@ public:
     ///   Source location of this exception.
     /// @param message
     ///   Error message of this exception.
-    Exception(SourceLocation loc, String message) noexcept;
+    InkApi Exception(SourceLocation loc, String message) noexcept;
 
     /// @brief
     ///   Destroy this exception object.
-    ~Exception() noexcept override;
+    InkApi ~Exception() noexcept override;
 
     [[deprecated("This method doesn't return any useful message. Use errorMessage() instead.")]]
-    auto what() const noexcept -> const char * final;
+    InkApi auto what() const noexcept -> const char * final;
 
     /// @brief
     ///   Get source location of this exception.
@@ -71,7 +71,7 @@ public:
     /// @return
     ///   Error message of this exception.
     [[nodiscard]]
-    auto errorMessage() const noexcept -> StringView;
+    InkApi auto errorMessage() const noexcept -> StringView;
 
 protected:
     /// @brief
@@ -87,7 +87,7 @@ class SystemErrorException : public Exception {
 public:
     /// @brief
     ///   Create an empty system error exception. Error code is set to 0.
-    SystemErrorException() noexcept;
+    InkApi SystemErrorException() noexcept;
 
     /// @brief
     ///   Create a system error exception with system error code.
@@ -96,7 +96,7 @@ public:
     ///
     /// @param errc
     ///   System error code of this exception.
-    SystemErrorException(std::int32_t errc) noexcept;
+    InkApi SystemErrorException(std::int32_t errc) noexcept;
 
     /// @brief
     ///   Create a system error exception with system error code and custom error message.
@@ -105,7 +105,7 @@ public:
     ///   System error code of this exception.
     /// @param message
     ///   Custom error message.
-    SystemErrorException(std::int32_t errc, String message) noexcept;
+    InkApi SystemErrorException(std::int32_t errc, String message) noexcept;
 
     /// @brief
     ///   Create a system error exception with source location and error code.
@@ -116,7 +116,7 @@ public:
     ///   Source location of this system error exception.
     /// @param errc
     ///   System error code of this exception.
-    SystemErrorException(SourceLocation loc, std::int32_t errc) noexcept;
+    InkApi SystemErrorException(SourceLocation loc, std::int32_t errc) noexcept;
 
     /// @brief
     ///   Create a system error exception with source location, system error code and custom error
@@ -128,11 +128,11 @@ public:
     ///   System error code of this exception.
     /// @param message
     ///   Custom error message.
-    SystemErrorException(SourceLocation loc, std::int32_t errc, String message) noexcept;
+    InkApi SystemErrorException(SourceLocation loc, std::int32_t errc, String message) noexcept;
 
     /// @brief
     ///   Destroy this system error exception.
-    ~SystemErrorException() noexcept override;
+    InkApi ~SystemErrorException() noexcept override;
 
     /// @brief
     ///   Get system error code from this exception.

@@ -11,7 +11,7 @@ class SwapChain {
 public:
     /// @brief
     ///   Create an empty swap chain object.
-    SwapChain() noexcept;
+    InkApi SwapChain() noexcept;
 
     /// @brief
     ///   Create a new swap chain for the specified window.
@@ -27,10 +27,10 @@ public:
     ///   Back buffer pixel format.
     /// @param enableTearing
     ///   Specified whether to enable variable refresh rate for this swap chain.
-    SwapChain(HWND          window,
-              std::uint32_t numBuffers    = 2,
-              DXGI_FORMAT   bufferFormat  = DXGI_FORMAT_R8G8B8A8_UNORM,
-              bool          enableTearing = false) noexcept;
+    InkApi SwapChain(HWND          window,
+                     std::uint32_t numBuffers    = 2,
+                     DXGI_FORMAT   bufferFormat  = DXGI_FORMAT_R8G8B8A8_UNORM,
+                     bool          enableTearing = false) noexcept;
 
     /// @brief
     ///   Copy constructor for swap chain is disabled.
@@ -45,7 +45,7 @@ public:
     ///
     /// @param other
     ///   The swap chain to be moved. The moved swap chain will be invalidated.
-    SwapChain(SwapChain &&other) noexcept;
+    InkApi SwapChain(SwapChain &&other) noexcept;
 
     /// @brief
     ///   Move assignment of swap chain.
@@ -55,17 +55,17 @@ public:
     ///
     /// @return
     ///   Reference to this swap chain.
-    auto operator=(SwapChain &&other) noexcept -> SwapChain &;
+    InkApi auto operator=(SwapChain &&other) noexcept -> SwapChain &;
 
     /// @brief
     ///   Destroy this swap chain.
-    ~SwapChain() noexcept;
+    InkApi ~SwapChain() noexcept;
 
     /// @brief
     ///   Present current back buffer.
     /// @note
     ///   This method returns immediately and will not block current thread.
-    auto present() noexcept -> void;
+    InkApi auto present() noexcept -> void;
 
     /// @brief
     ///   Resize swap chain back buffers.
@@ -77,7 +77,7 @@ public:
     ///   New width of back buffers. Pass (0, 0) to use window client size as new back buffer size.
     /// @param height
     ///   New height of back buffers. Pass (0, 0) to use window client size as new back buffer size.
-    auto resize(std::uint32_t width, std::uint32_t height) noexcept -> void;
+    InkApi auto resize(std::uint32_t width, std::uint32_t height) noexcept -> void;
 
     /// @brief
     ///   Checks if variable refresh rate is enabled for this swap chain.

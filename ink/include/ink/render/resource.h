@@ -40,7 +40,7 @@ public:
 
     /// @brief
     ///   Destroy this GPU resource.
-    virtual ~GpuResource() noexcept;
+    InkApi virtual ~GpuResource() noexcept;
 
     /// @brief
     ///   Get GPU usage state of this GPU resource.
@@ -68,7 +68,7 @@ class GpuBuffer : public GpuResource {
 public:
     /// @brief
     ///   Create an empty GPU buffer.
-    GpuBuffer() noexcept;
+    InkApi GpuBuffer() noexcept;
 
     /// @brief
     ///   Create a new GPU buffer with at least the specified size.
@@ -77,14 +77,14 @@ public:
     ///
     /// @param size
     ///   Expected size in byte of this GPU buffer. This value may be changed due to alignment.
-    explicit GpuBuffer(std::size_t size) noexcept;
+    InkApi explicit GpuBuffer(std::size_t size) noexcept;
 
     /// @brief
     ///   Move constructor of GPU buffer.
     ///
     /// @param other
     ///   The GPU buffer to be moved. The moved GPU buffer will be invalidated.
-    GpuBuffer(GpuBuffer &&other) noexcept;
+    InkApi GpuBuffer(GpuBuffer &&other) noexcept;
 
     /// @brief
     ///   Move assignment of GPU buffer.
@@ -94,11 +94,11 @@ public:
     ///
     /// @return
     ///   Reference to this GPU buffer.
-    auto operator=(GpuBuffer &&other) noexcept -> GpuBuffer &;
+    InkApi auto operator=(GpuBuffer &&other) noexcept -> GpuBuffer &;
 
     /// @brief
     ///   Destroy this GPU buffer.
-    ~GpuBuffer() noexcept;
+    InkApi ~GpuBuffer() noexcept;
 
     /// @brief
     ///   Get size in byte of this GPU buffer.
@@ -149,7 +149,7 @@ class StructuredBuffer : public GpuBuffer {
 public:
     /// @brief
     ///   Create an empty structured buffer.
-    StructuredBuffer() noexcept;
+    InkApi StructuredBuffer() noexcept;
 
     /// @brief
     ///   Create new structured buffer for the specified kind of element.
@@ -160,14 +160,14 @@ public:
     ///   Number of elements to be stored in this structured buffer.
     /// @param size
     ///   Size in byte of each element.
-    StructuredBuffer(std::uint32_t count, std::uint32_t size) noexcept;
+    InkApi StructuredBuffer(std::uint32_t count, std::uint32_t size) noexcept;
 
     /// @brief
     ///   Move constructor of structured buffer.
     ///
     /// @param other
     ///   The structured buffer to be moved from. The moved structured buffer will be invalidated.
-    StructuredBuffer(StructuredBuffer &&other) noexcept;
+    InkApi StructuredBuffer(StructuredBuffer &&other) noexcept;
 
     /// @brief
     ///   Move assignment of structured buffer.
@@ -177,11 +177,11 @@ public:
     ///
     /// @return
     ///   Reference to this structured buffer.
-    auto operator=(StructuredBuffer &&other) noexcept -> StructuredBuffer &;
+    InkApi auto operator=(StructuredBuffer &&other) noexcept -> StructuredBuffer &;
 
     /// @brief
     ///   Destroy this structured buffer.
-    ~StructuredBuffer() noexcept override;
+    InkApi ~StructuredBuffer() noexcept override;
 
     /// @brief
     ///   Get number of elements that could be stored in this structured buffer.
@@ -214,7 +214,7 @@ public:
     ///   New number of elements to be stored in this structured buffer.
     /// @param newSize
     ///   New size in byte of element.
-    auto reshape(std::uint32_t newCount, std::uint32_t newSize) noexcept -> void;
+    InkApi auto reshape(std::uint32_t newCount, std::uint32_t newSize) noexcept -> void;
 
     /// @brief
     ///   Get structured buffer unordered access view CPU descriptor handle of this GPU buffer.
@@ -244,14 +244,14 @@ class PixelBuffer : public GpuResource {
 public:
     /// @brief
     ///   Create an empty pixel buffer.
-    PixelBuffer() noexcept;
+    InkApi PixelBuffer() noexcept;
 
     /// @brief
     ///   Move constructor of pixel buffer.
     ///
     /// @param other
     ///   The pixel buffer to be moved. The moved pixel buffer will be invalidated.
-    PixelBuffer(PixelBuffer &&other) noexcept;
+    InkApi PixelBuffer(PixelBuffer &&other) noexcept;
 
     /// @brief
     ///   Move assignment of pixel buffer.
@@ -261,11 +261,11 @@ public:
     ///
     /// @return
     ///   Reference to this pixel buffer.
-    auto operator=(PixelBuffer &&other) noexcept -> PixelBuffer &;
+    InkApi auto operator=(PixelBuffer &&other) noexcept -> PixelBuffer &;
 
     /// @brief
     ///   Destroy this pixel buffer.
-    ~PixelBuffer() noexcept override;
+    InkApi ~PixelBuffer() noexcept override;
 
     /// @brief
     ///   Get width in pixel of this pixel buffer.
@@ -357,7 +357,7 @@ class ColorBuffer : public PixelBuffer {
 public:
     /// @brief
     ///   Create an empty color buffer.
-    ColorBuffer() noexcept;
+    InkApi ColorBuffer() noexcept;
 
     /// @brief
     ///   Create a new color buffer.
@@ -378,12 +378,12 @@ public:
     /// @param sampleCount
     ///   Number of samples per-pixel of this color buffer. This value will be set to 1 if 0 is
     ///   passed. Enabling multi-sampling will disable unordered access for this color buffer.
-    ColorBuffer(std::uint32_t width,
-                std::uint32_t height,
-                std::uint32_t arraySize,
-                DXGI_FORMAT   format,
-                std::uint32_t mipLevels   = 1,
-                std::uint32_t sampleCount = 1) noexcept;
+    InkApi ColorBuffer(std::uint32_t width,
+                       std::uint32_t height,
+                       std::uint32_t arraySize,
+                       DXGI_FORMAT   format,
+                       std::uint32_t mipLevels   = 1,
+                       std::uint32_t sampleCount = 1) noexcept;
 
     /// @brief
     ///   Create a new 2D color buffer.
@@ -404,7 +404,7 @@ public:
     ///
     /// @param other
     ///   The color buffer to be moved from. The moved color buffer will be invalidated.
-    ColorBuffer(ColorBuffer &&other) noexcept;
+    InkApi ColorBuffer(ColorBuffer &&other) noexcept;
 
     /// @brief
     ///   Move assignment of color buffer.
@@ -414,11 +414,11 @@ public:
     ///
     /// @return
     ///   Reference to this color buffer.
-    auto operator=(ColorBuffer &&other) noexcept -> ColorBuffer &;
+    InkApi auto operator=(ColorBuffer &&other) noexcept -> ColorBuffer &;
 
     /// @brief
     ///   Destroy this color buffer.
-    ~ColorBuffer() noexcept override;
+    InkApi ~ColorBuffer() noexcept override;
 
     /// @brief
     ///   Get clear color of this color buffer.

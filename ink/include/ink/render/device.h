@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ink/core/common.h"
+
 #include <concurrent_queue.h>
 #include <d3d12.h>
 #include <dxgi1_6.h>
@@ -20,14 +22,14 @@ public:
     ///   Render device is a huge object and may take a long time to construct and destruct.
     ///   Assertion is used to deal with render API errors. Error messages will be written to
     ///   default logger.
-    RenderDevice() noexcept;
+    InkApi RenderDevice() noexcept;
 
     /// @brief
     ///   Release all D3D12 resources and destroy this render device.
     /// @note
     ///   Destroying render device requires synchronizing with GPU which may take a long time to
     ///   make sure that all resources could be released safely.
-    ~RenderDevice() noexcept;
+    InkApi ~RenderDevice() noexcept;
 
     /// @brief
     ///   Get the DXGI factory that is used to initialize this render device.
@@ -104,7 +106,7 @@ public:
     ///
     /// @param fenceValue
     ///   The fence value to be waited for.
-    auto sync(std::uint64_t fenceValue) const noexcept -> void;
+    InkApi auto sync(std::uint64_t fenceValue) const noexcept -> void;
 
     /// @brief
     ///   Block current thread until all tasks submitted to GPU before this method call to be
@@ -121,7 +123,7 @@ public:
     /// @return
     ///   A new direct command allocator.
     [[nodiscard]]
-    auto newCommandAllocator() noexcept -> ID3D12CommandAllocator *;
+    InkApi auto newCommandAllocator() noexcept -> ID3D12CommandAllocator *;
 
     /// @brief
     ///   Free the specified direct command allocator to reuse in the future.
@@ -130,8 +132,8 @@ public:
     ///   Fence value that indicates when the freed command allocator could be reused.
     /// @param allocator
     ///   The command allocator to be freed.
-    auto freeCommandAllocator(std::uint64_t fenceValue, ID3D12CommandAllocator *allocator) noexcept
-        -> void;
+    InkApi auto freeCommandAllocator(std::uint64_t           fenceValue,
+                                     ID3D12CommandAllocator *allocator) noexcept -> void;
 
     /// @brief
     ///   Checks if this render device supports DirectX ray tracing.
@@ -143,7 +145,7 @@ public:
     /// @retval false
     ///   This render device does not support DXR.
     [[nodiscard]]
-    auto supportRayTracing() const noexcept -> bool;
+    InkApi auto supportRayTracing() const noexcept -> bool;
 
     /// @brief
     ///   Checks if the specified pixel format supports unordered access.
@@ -158,7 +160,7 @@ public:
     /// @retval false
     ///   The specified pixel format does not support unordered access.
     [[nodiscard]]
-    auto supportUnorderedAccess(DXGI_FORMAT format) const noexcept -> bool;
+    InkApi auto supportUnorderedAccess(DXGI_FORMAT format) const noexcept -> bool;
 
     /// @brief
     ///   Allocate a new constant buffer view CPU descriptor.
@@ -169,20 +171,20 @@ public:
     /// @return
     ///   A D3D12 CPU descriptor handle to a free constant buffer view.
     [[nodiscard]]
-    auto newConstantBufferView() noexcept -> D3D12_CPU_DESCRIPTOR_HANDLE;
+    InkApi auto newConstantBufferView() noexcept -> D3D12_CPU_DESCRIPTOR_HANDLE;
 
-    /// @brief 
+    /// @brief
     ///   Free a constant buffer view CPU descriptor.
-    /// 
-    /// @param handle 
+    ///
+    /// @param handle
     ///   CPU handle to the constant buffer view CPU descriptor to be freed.
-    auto freeConstantBufferView(D3D12_CPU_DESCRIPTOR_HANDLE handle) noexcept -> void;
+    InkApi auto freeConstantBufferView(D3D12_CPU_DESCRIPTOR_HANDLE handle) noexcept -> void;
 
-    /// @brief 
+    /// @brief
     ///   Allocate a new shader resource view CPU descriptor.
     /// @note
     ///   This method is an alias of @p RenderDevice::newConstantBufferView().
-    /// 
+    ///
     /// @return
     ///   A D3D12 CPU descriptor handle to a free shader resource view.
     [[nodiscard]]
@@ -190,12 +192,12 @@ public:
         return this->newConstantBufferView();
     }
 
-    /// @brief 
+    /// @brief
     ///   Free a shader resource view CPU descriptor.
     /// @note
     ///   This method is an alias of @p RenderDevice::freeConstantBufferView().
-    /// 
-    /// @param handle 
+    ///
+    /// @param handle
     ///   CPU handle to the shader resource view CPU descriptor to be freed.
     auto freeShaderResourceView(D3D12_CPU_DESCRIPTOR_HANDLE handle) noexcept -> void {
         this->freeConstantBufferView(handle);
@@ -224,20 +226,20 @@ public:
         this->freeConstantBufferView(handle);
     }
 
-    /// @brief 
+    /// @brief
     ///   Allocate a new sampler CPU descriptor.
-    /// 
+    ///
     /// @return
     ///   A D3D12 CPU descriptor handle to a free sampler view.
     [[nodiscard]]
-    auto newSamplerView() noexcept -> D3D12_CPU_DESCRIPTOR_HANDLE;
+    InkApi auto newSamplerView() noexcept -> D3D12_CPU_DESCRIPTOR_HANDLE;
 
     /// @brief
     ///   Free a sampler CPU descriptor.
     ///
     /// @param handle
     ///   CPU handle to the sampler CPU descriptor to be freed.
-    auto freeSamplerView(D3D12_CPU_DESCRIPTOR_HANDLE handle) noexcept -> void;
+    InkApi auto freeSamplerView(D3D12_CPU_DESCRIPTOR_HANDLE handle) noexcept -> void;
 
     /// @brief
     ///   Allocate a new render target view CPU descriptor.
@@ -245,14 +247,14 @@ public:
     /// @return
     ///   A D3D12 CPU descriptor handle to a free render target view.
     [[nodiscard]]
-    auto newRenderTargetView() noexcept -> D3D12_CPU_DESCRIPTOR_HANDLE;
+    InkApi auto newRenderTargetView() noexcept -> D3D12_CPU_DESCRIPTOR_HANDLE;
 
     /// @brief
     ///   Free a render target view CPU descriptor.
     ///
     /// @param handle
     ///   CPU handle to the render target view CPU descriptor to be freed.
-    auto freeRenderTargetView(D3D12_CPU_DESCRIPTOR_HANDLE handle) noexcept -> void;
+    InkApi auto freeRenderTargetView(D3D12_CPU_DESCRIPTOR_HANDLE handle) noexcept -> void;
 
     /// @brief
     ///   Allocate a new depth stencil view CPU descriptor.
@@ -260,14 +262,14 @@ public:
     /// @return
     ///   A D3D12 CPU descriptor handle to a free depth stencil view.
     [[nodiscard]]
-    auto newDepthStencilView() noexcept -> D3D12_CPU_DESCRIPTOR_HANDLE;
+    InkApi auto newDepthStencilView() noexcept -> D3D12_CPU_DESCRIPTOR_HANDLE;
 
     /// @brief
     ///   Free a depth stencil view CPU descriptor.
     ///
     /// @param handle
     ///   CPU handle to the depth stencil view CPU descriptor to be freed.
-    auto freeDepthStencilView(D3D12_CPU_DESCRIPTOR_HANDLE handle) noexcept -> void;
+    InkApi auto freeDepthStencilView(D3D12_CPU_DESCRIPTOR_HANDLE handle) noexcept -> void;
 
     /// @brief
     ///   Get render device singleton instance.
@@ -278,7 +280,7 @@ public:
     /// @return
     ///   Reference to the render device singleton instance.
     [[nodiscard]]
-    static auto singleton() noexcept -> RenderDevice &;
+    InkApi static auto singleton() noexcept -> RenderDevice &;
 
 private:
     /// @brief

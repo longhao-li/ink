@@ -149,24 +149,24 @@ public:
     ///
     /// @param level
     ///   Message severity filter level. Default filter level is @p LogLevel::Trace.
-    VisualStudioDebugLogMessageHandler(LogLevel level = LogLevel::Trace) noexcept;
+    InkApi VisualStudioDebugLogMessageHandler(LogLevel level = LogLevel::Trace) noexcept;
 
     /// @brief
     ///   Destroy this visual studio debug log message handler.
-    ~VisualStudioDebugLogMessageHandler() noexcept override;
+    InkApi ~VisualStudioDebugLogMessageHandler() noexcept override;
 
     /// @brief
     ///   Write the specified message to visual studio debug console.
     ///
     /// @param message
     ///   The log message to be written.
-    auto write(const LogMessage &message) const -> void override;
+    InkApi auto write(const LogMessage &message) const -> void override;
 
     /// @brief
     ///   Flush visual studio debug writter.
     /// @remark
     ///   Actually this method does nothing.
-    auto flush() -> void override;
+    InkApi auto flush() -> void override;
 
 private:
     /// @brief
@@ -181,22 +181,22 @@ public:
     ///
     /// @param level
     ///   Message severity filter level. Default filter level is @p LogLevel::Trace.
-    ConsoleLogMessageHandler(LogLevel level = LogLevel::Trace) noexcept;
+    InkApi ConsoleLogMessageHandler(LogLevel level = LogLevel::Trace) noexcept;
 
     /// @brief
     ///   Destroy this console log message handler.
-    ~ConsoleLogMessageHandler() noexcept override;
+    InkApi ~ConsoleLogMessageHandler() noexcept override;
 
     /// @brief
     ///   Write the specified message to stdout.
     ///
     /// @param message
     ///   The log message to be written.
-    auto write(const LogMessage &message) const -> void override;
+    InkApi auto write(const LogMessage &message) const -> void override;
 
     /// @brief
     ///   Flush stdout.
-    auto flush() -> void override;
+    InkApi auto flush() -> void override;
 
 private:
     /// @brief
@@ -213,7 +213,7 @@ public:
     ///   Message severity filter level of this logger. Default log level is @p LogLevel::Info.
     /// @param flushLv
     ///   Flush filter level of this logger. Default flush level is @p LogLevel::Fatal.
-    Logger(LogLevel level = LogLevel::Info, LogLevel flushLv = LogLevel::Fatal) noexcept;
+    InkApi Logger(LogLevel level = LogLevel::Info, LogLevel flushLv = LogLevel::Fatal) noexcept;
 
     /// @brief
     ///   Copy constructor of logger is disabled.
@@ -233,7 +233,7 @@ public:
     ///   Severity level of the log message.
     /// @param message
     ///   The log message to be written.
-    auto write(LogLevel severity, StringView message) const -> void;
+    InkApi auto write(LogLevel severity, StringView message) const -> void;
 
     /// @brief
     ///   Format and write a log message to this logger.
@@ -511,7 +511,7 @@ public:
     /// @note
     ///   This method itself does not throw any exception, but message handlers may throw exceptions
     ///   while flushing.
-    auto flush() -> void;
+    InkApi auto flush() -> void;
 
     /// @brief
     ///   Get logger singleton instance. This is the default logger of global logging functions.
@@ -519,7 +519,7 @@ public:
     /// @return
     ///   Reference to the logger singleton instance.
     [[nodiscard]]
-    static auto singleton() noexcept -> Logger &;
+    InkApi static auto singleton() noexcept -> Logger &;
 
 private:
     /// @brief

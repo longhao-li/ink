@@ -247,7 +247,7 @@ constexpr auto operator^=(WindowStyle &a, WindowStyle b) noexcept -> WindowStyle
     return (a = (a ^ b));
 }
 
-class Window {
+class InkApi Window {
 public:
     /// @brief
     ///   Create a new window.
@@ -437,11 +437,11 @@ public:
     ///   New client height of this window.
     virtual auto onResize(std::uint32_t width, std::uint32_t height) -> void;
 
-    /// @brief 
+    /// @brief
     ///   Window minimize callback for this window. This callback is called if window is minimized.
     virtual auto onMinimize() -> void;
 
-    /// @brief 
+    /// @brief
     ///   Window maximize callback for this window. This callback is called if window is maximized.
     virtual auto onMaximize() -> void;
 

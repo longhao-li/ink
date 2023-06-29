@@ -635,3 +635,40 @@ auto ink::String::toUpper() noexcept -> String & {
 
     return *this;
 }
+
+auto ink::operator+(const String &lhs, const String &rhs) noexcept -> String {
+    String result;
+    result.reserve(lhs.length() + rhs.length());
+    result.append(lhs).append(rhs);
+    return result;
+}
+
+auto ink::operator+(const String &lhs, StringView rhs) noexcept -> String {
+    String result;
+    result.reserve(lhs.length() + rhs.length());
+    result.append(lhs).append(rhs);
+    return result;
+}
+
+auto ink::operator+(StringView lhs, const String &rhs) noexcept -> String {
+    String result;
+    result.reserve(lhs.length() + rhs.length());
+    result.append(lhs).append(rhs);
+    return result;
+}
+
+auto ink::operator+(const String &lhs, const char16_t *rhs) noexcept -> String {
+    StringView sv(rhs);
+    String     result;
+    result.reserve(lhs.length() + sv.length());
+    result.append(lhs).append(sv);
+    return result;
+}
+
+auto ink::operator+(const char16_t *lhs, const String &rhs) noexcept -> String {
+    StringView sv(lhs);
+    String     result;
+    result.reserve(sv.length() + rhs.length());
+    result.append(sv).append(rhs);
+    return result;
+}

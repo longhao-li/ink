@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ink/core/common.h"
+
 #include <cstddef>
 
 namespace ink {
@@ -17,6 +19,6 @@ namespace ink {
 /// @return
 ///   Hash value of the specified data.
 [[nodiscard]]
-auto hash(const void *data, std::size_t size, std::size_t seed = 0) noexcept -> std::size_t;
+InkApi auto hash(const void *data, std::size_t size, std::size_t seed = 0) noexcept -> std::size_t;
 
 } // namespace ink
