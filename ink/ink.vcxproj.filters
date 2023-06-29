@@ -69,6 +69,9 @@
     <ClInclude Include="include\ink\core\common.h">
       <Filter>include\ink\core</Filter>
     </ClInclude>
+    <ClInclude Include="include\ink\render\pipeline.h">
+      <Filter>include\ink\render</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\core\exception.cpp">
@@ -96,6 +99,9 @@
       <Filter>src\render</Filter>
     </ClCompile>
     <ClCompile Include="src\render\swap_chain.cpp">
+      <Filter>src\render</Filter>
+    </ClCompile>
+    <ClCompile Include="src\render\pipeline.cpp">
       <Filter>src\render</Filter>
     </ClCompile>
   </ItemGroup>

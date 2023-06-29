@@ -170,6 +170,7 @@
     <ClInclude Include="include\ink\render\color.h" />
     <ClInclude Include="include\ink\render\descriptor.h" />
     <ClInclude Include="include\ink\render\device.h" />
+    <ClInclude Include="include\ink\render\pipeline.h" />
     <ClInclude Include="include\ink\render\resource.h" />
     <ClInclude Include="include\ink\render\swap_chain.h" />
   </ItemGroup>
@@ -181,6 +182,7 @@
     <ClCompile Include="src\core\window.cpp" />
     <ClCompile Include="src\render\descriptor.cpp" />
     <ClCompile Include="src\render\device.cpp" />
+    <ClCompile Include="src\render\pipeline.cpp" />
     <ClCompile Include="src\render\resource.cpp" />
     <ClCompile Include="src\render\swap_chain.cpp" />
   </ItemGroup>
