@@ -75,3 +75,43 @@ ink::RootSignature::RootSignature(RootSignature &&other) noexcept = default;
 auto ink::RootSignature::operator=(RootSignature &&other) noexcept -> RootSignature & = default;
 
 ink::RootSignature::~RootSignature() noexcept {}
+
+ink::PipelineState::~PipelineState() noexcept {}
+
+ink::GraphicsPipelineState::GraphicsPipelineState() noexcept
+    : PipelineState(),
+      m_renderTargetCount(),
+      m_renderTargetFormats(),
+      m_depthStencilFormat(),
+      m_primitiveType(),
+      m_sampleCount() {}
+
+ink::GraphicsPipelineState::GraphicsPipelineState(
+    const D3D12_GRAPHICS_PIPELINE_STATE_DESC &desc) noexcept
+    : PipelineState(),
+      m_renderTargetCount(desc.NumRenderTargets),
+      m_renderTargetFormats{
+          desc.RTVFormats[0], desc.RTVFormats[1], desc.RTVFormats[2], desc.RTVFormats[3],
+          desc.RTVFormats[4], desc.RTVFormats[5], desc.RTVFormats[6], desc.RTVFormats[7],
+      },
+      m_depthStencilFormat(desc.DSVFormat),
+      m_primitiveType(desc.PrimitiveTopologyType),
+      m_sampleCount(desc.SampleDesc.Count) {
+    [[maybe_unused]] HRESULT hr;
+
+    auto &dev = RenderDevice::singleton();
+    hr        = dev.device()->CreateGraphicsPipelineState(&desc,
+                                                          IID_PPV_ARGS(m_pipelineState.GetAddressOf()));
+    inkAssert(SUCCEEDED(hr), u"Failed to create graphics pipeline state: 0x{:X}.",
+              static_cast<std::uint32_t>(hr));
+}
+
+ink::GraphicsPipelineState::GraphicsPipelineState(const GraphicsPipelineState &other) noexcept =
+    default;
+
+ink::GraphicsPipelineState::GraphicsPipelineState(GraphicsPipelineState &&other) noexcept = default;
+
+auto ink::GraphicsPipelineState::operator=(GraphicsPipelineState &&other) noexcept
+    -> GraphicsPipelineState & = default;
+
+ink::GraphicsPipelineState::~GraphicsPipelineState() noexcept {}

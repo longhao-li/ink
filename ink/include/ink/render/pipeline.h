@@ -208,4 +208,192 @@ private:
     std::uint16_t m_tableSizes[64];
 };
 
+class PipelineState {
+public:
+    /// @brief
+    ///   Create an empty pipeline state object.
+    PipelineState() noexcept = default;
+
+    /// @brief
+    ///   Copy constructor of pipeline state object. Reference counting is used for D3D12 pipeline
+    ///   state object.
+    ///
+    /// @param other
+    ///   The pipeline state object to be copied from.
+    PipelineState(const PipelineState &other) noexcept = default;
+
+    /// @brief
+    ///   Copy assignment of pipeline state object. Reference counting is used for D3D12 pipeline
+    ///   state object.
+    ///
+    /// @param other
+    ///   The pipeline state object to be copied from.
+    ///
+    /// @return
+    ///   Reference to this pipeline state object.
+    auto operator=(const PipelineState &other) noexcept -> PipelineState & = default;
+
+    /// @brief
+    ///   Move constructor of pipeline state object.
+    ///
+    /// @param other
+    ///   The pipeline state object to be moved from. The moved pipeline state object will be
+    ///   invalidated.
+    PipelineState(PipelineState &&other) noexcept = default;
+
+    /// @brief
+    ///   Move assignment of pipeline state object.
+    ///
+    /// @param other
+    ///   The pipeline state object to be moved from. The moved pipeline state object will be
+    ///   invalidated.
+    ///
+    /// @return
+    ///   Reference to this pipeline state object.
+    auto operator=(PipelineState &&other) noexcept -> PipelineState & = default;
+
+    /// @brief
+    ///   Destroy this pipeline state object.
+    InkApi virtual ~PipelineState() noexcept;
+
+    /// @brief
+    ///   Get D3D12 pipeline state object native handle.
+    ///
+    /// @return
+    ///   D3D12 pipeline state object native handle.
+    [[nodiscard]]
+    auto pipelineState() const noexcept -> ID3D12PipelineState * {
+        return m_pipelineState.Get();
+    }
+
+protected:
+    /// @brief
+    ///   D3D12 pipeline state object.
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_pipelineState;
+};
+
+class GraphicsPipelineState : public PipelineState {
+public:
+    /// @brief
+    ///   Create an empty graphics pipeline state object.
+    InkApi GraphicsPipelineState() noexcept;
+
+    /// @brief
+    ///   Create a new graphics pipeline state object.
+    /// @note
+    ///   Errors are handled with assertions.
+    ///
+    /// @param desc
+    ///   A D3D12 graphics pipeline state description structure that describes how to create this
+    ///   graphics pipeline state object.
+    InkApi GraphicsPipelineState(const D3D12_GRAPHICS_PIPELINE_STATE_DESC &desc) noexcept;
+
+    /// @brief
+    ///   Copy constructor of graphics pipeline state. Reference counting is used for D3D12 pipeline
+    ///   state object.
+    ///
+    /// @param other
+    ///   The graphics pipeline state object to be copied from.
+    InkApi GraphicsPipelineState(const GraphicsPipelineState &other) noexcept;
+
+    /// @brief
+    ///   Move constructor of graphics pipeline state.
+    ///
+    /// @param other
+    ///   The graphics pipeline state object to be moved from. The moved graphics pipeline state
+    ///   object will be invalidated.
+    InkApi GraphicsPipelineState(GraphicsPipelineState &&other) noexcept;
+
+    /// @brief
+    ///   Move assignment of graphics pipeline state.
+    ///
+    /// @param other
+    ///   The graphics pipeline state object to be moved from. The moved graphics pipeline state
+    ///   object will be invalidated.
+    ///
+    /// @return
+    ///   Reference to this graphics pipeline state.
+    InkApi auto operator=(GraphicsPipelineState &&other) noexcept -> GraphicsPipelineState &;
+
+    /// @brief
+    ///   Decrease reference counting of current graphics pipeline state and destroy it if the
+    ///   reference counting is 0.
+    InkApi ~GraphicsPipelineState() noexcept override;
+
+    /// @brief
+    ///   Get number of render targets in this graphics pipeline.
+    ///
+    /// @return
+    ///   Number of render targets in this graphics pipeline.
+    [[nodiscard]]
+    auto renderTargetCount() const noexcept -> std::uint32_t {
+        return m_renderTargetCount;
+    }
+
+    /// @brief
+    ///   Get pixel format of the specified render target.
+    ///
+    /// @param index
+    ///   Index of the render target to get pixel format for.
+    ///
+    /// @return
+    ///   Pixel format of the specified render target. Return @p DXGI_FORMAT_UNKNOWN if index is out
+    ///   of range.
+    [[nodiscard]]
+    auto renderTargetFormat(std::size_t index) const noexcept -> DXGI_FORMAT {
+        return (index < m_renderTargetCount) ? m_renderTargetFormats[index] : DXGI_FORMAT_UNKNOWN;
+    }
+
+    /// @brief
+    ///   Get depth stencil format of this graphics pipeline.
+    ///
+    /// @return
+    ///   Depth stencil format of this graphics pipeline.
+    [[nodiscard]]
+    auto depthStencilFormat() const noexcept -> DXGI_FORMAT {
+        return m_depthStencilFormat;
+    }
+
+    /// @brief
+    ///   Get primitive type of this graphics pipeline.
+    ///
+    /// @return
+    ///   Primitive type of this graphics pipeline.
+    [[nodiscard]]
+    auto primitiveType() const noexcept -> D3D12_PRIMITIVE_TOPOLOGY_TYPE {
+        return m_primitiveType;
+    }
+
+    /// @brief
+    ///   Get sample count of this graphics pipeline.
+    ///
+    /// @return
+    ///   Sample count of this graphics pipeline.
+    [[nodiscard]]
+    auto sampleCount() const noexcept -> std::uint32_t {
+        return m_sampleCount;
+    }
+
+protected:
+    /// @brief
+    ///   Number of render targets in this graphics pipeline.
+    std::uint32_t m_renderTargetCount;
+
+    /// @brief
+    ///   Pixel formats for each render target of this graphics pipeline.
+    DXGI_FORMAT m_renderTargetFormats[8];
+
+    /// @brief
+    ///   Depth stencil format of this graphics pipeline state.
+    DXGI_FORMAT m_depthStencilFormat;
+
+    /// @brief
+    ///   Primitive type of this graphics pipeline.
+    D3D12_PRIMITIVE_TOPOLOGY_TYPE m_primitiveType;
+
+    /// @brief
+    ///   Sample count of this graphics pipeline state.
+    std::uint32_t m_sampleCount;
+};
+
 } // namespace ink
