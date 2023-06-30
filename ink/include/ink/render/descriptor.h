@@ -111,6 +111,122 @@ constexpr auto operator-(CpuDescriptorHandle lhs, std::ptrdiff_t rhs) noexcept
     return lhs;
 }
 
+class DescriptorHandle {
+public:
+    /// @brief
+    ///   Create a null shader visible descriptor handle.
+    constexpr DescriptorHandle() noexcept : m_cpuHandle{SIZE_T(-1)}, m_gpuHandle{UINT64(-1)} {}
+
+    /// @brief
+    ///   Create a shader-visible descriptor handle from D3D12 CPU and GPU handle.
+    ///
+    /// @param cpuHandle
+    ///   The CPU descriptor handle that this descriptor handle is created from.
+    /// @param gpuHandle
+    ///   The GPU descriptor handle that this descriptor handle is created from.
+    constexpr DescriptorHandle(D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle,
+                               D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle) noexcept
+        : m_cpuHandle(cpuHandle), m_gpuHandle(gpuHandle) {}
+
+    /// @brief
+    ///   Checks if this is a null shader-visible descriptor handle.
+    ///
+    /// @return bool
+    ///   A boolean value that indicates whether this is a null descriptor handle.
+    /// @retval true
+    ///   This is a null shader-visible descriptor handle.
+    /// @retval false
+    ///   This is not a null shader-visible descriptor handle.
+    [[nodiscard]]
+    constexpr auto isNull() const noexcept -> bool {
+        return m_cpuHandle.ptr == SIZE_T(-1);
+    }
+
+    /// @brief
+    ///   Apply an offset to this shader-visible descriptor handle.
+    /// @note
+    ///   No offset will be applied if this is a null descriptor handle, whatever @p off is.
+    ///
+    /// @param off
+    ///   The offset to be applied.
+    ///
+    /// @return
+    ///   Reference to this shader-visible descriptor handle.
+    constexpr auto operator+=(std::ptrdiff_t off) noexcept -> DescriptorHandle & {
+        if (isNull())
+            return *this;
+
+        m_cpuHandle.ptr = SIZE_T(std::ptrdiff_t(m_cpuHandle.ptr) + off);
+        m_gpuHandle.ptr = UINT64(std::int64_t(m_gpuHandle.ptr) + off);
+
+        return *this;
+    }
+
+    /// @brief
+    ///   Apply an offset to this shader-visible descriptor handle.
+    /// @note
+    ///   No offset will be applied if this is a null descriptor handle, whatever @p off is.
+    ///
+    /// @param off
+    ///   The offset to be applied.
+    ///
+    /// @return
+    ///   Reference to this shader-visible descriptor handle.
+    constexpr auto operator-=(std::ptrdiff_t off) noexcept -> DescriptorHandle & {
+        if (isNull())
+            return *this;
+
+        m_cpuHandle.ptr = SIZE_T(std::ptrdiff_t(m_cpuHandle.ptr) - off);
+        m_gpuHandle.ptr = UINT64(std::int64_t(m_gpuHandle.ptr) - off);
+
+        return *this;
+    }
+
+    constexpr auto operator==(const DescriptorHandle &rhs) const noexcept -> bool {
+        return m_cpuHandle.ptr == rhs.m_cpuHandle.ptr && m_gpuHandle.ptr == rhs.m_gpuHandle.ptr;
+    }
+
+    constexpr auto operator!=(const DescriptorHandle &rhs) const noexcept -> bool {
+        return !(*this == rhs);
+    }
+
+    /// @brief
+    ///   Allow implicit conversion to D3D12_CPU_DESCRIPTOR_HANDLE.
+    operator D3D12_CPU_DESCRIPTOR_HANDLE() const noexcept {
+        return m_cpuHandle;
+    }
+
+    /// @brief
+    ///   Allow implicit conversion to D3D12_GPU_DESCRIPTOR_HANDLE.
+    operator D3D12_GPU_DESCRIPTOR_HANDLE() const noexcept {
+        return m_gpuHandle;
+    }
+
+private:
+    /// @brief
+    ///   CPU descriptor handle for this shader visible descriptor.
+    D3D12_CPU_DESCRIPTOR_HANDLE m_cpuHandle;
+
+    /// @brief
+    ///   GPU descriptor handle for this shader visible descriptor.
+    D3D12_GPU_DESCRIPTOR_HANDLE m_gpuHandle;
+};
+
+constexpr auto operator+(DescriptorHandle lhs, std::ptrdiff_t rhs) noexcept -> DescriptorHandle {
+    lhs += rhs;
+    return lhs;
+}
+
+constexpr auto operator+(std::ptrdiff_t lhs, DescriptorHandle rhs) noexcept -> DescriptorHandle {
+    rhs += lhs;
+    return rhs;
+}
+
+constexpr auto operator-(DescriptorHandle lhs, std::ptrdiff_t rhs) noexcept -> DescriptorHandle {
+    lhs -= rhs;
+    return lhs;
+}
+
 class ConstantBufferView {
 public:
     /// @brief

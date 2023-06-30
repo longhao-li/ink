@@ -218,7 +218,9 @@ auto ink::Window::onFocus(bool focused) -> void {
 
 auto ink::Window::onClose() -> void {}
 
-auto ink::Window::onChar(char32_t codePoint) -> void {}
+auto ink::Window::onChar(char32_t codePoint) -> void {
+    (void)codePoint;
+}
 
 auto ink::Window::onKey(KeyCode key, KeyAction action, Modifier mods) -> void {
     (void)key;

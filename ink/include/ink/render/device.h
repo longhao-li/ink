@@ -272,6 +272,50 @@ public:
     InkApi auto freeDepthStencilView(D3D12_CPU_DESCRIPTOR_HANDLE handle) noexcept -> void;
 
     /// @brief
+    ///   Allocate a new shader-visible CBV/SRV/UAV descriptor heap.
+    /// @note
+    ///   Errors are handled with assertions.
+    ///
+    /// @return
+    ///   A new shader-visible CBV/SRV/UAV descriptor heap.
+    InkApi auto newDynamicViewHeap() noexcept -> ID3D12DescriptorHeap *;
+
+    /// @brief
+    ///   Free shader-visible CBV/SRV/UAV descriptor heaps.
+    ///
+    /// @param fenceValue
+    ///   A fence value that indicates when these dynamic descriptor heaps could be reused.
+    /// @param count
+    ///   Number of shader-visible CBV/SRV/UAV descriptor heaps to be freed.
+    /// @param heaps
+    ///   Pointer to start of the descriptor heap array to be freed.
+    InkApi auto freeDynamicViewHeaps(std::uint64_t          fenceValue,
+                                     std::size_t            count,
+                                     ID3D12DescriptorHeap **heaps) noexcept -> void;
+
+    /// @brief
+    ///   Allocate a new shader-visible sampler descriptor heap.
+    /// @note
+    ///   Errors are handled with assertions.
+    ///
+    /// @return
+    ///   A new shader-visible sampler descriptor heap.
+    InkApi auto newDynamicSamplerHeap() noexcept -> ID3D12DescriptorHeap *;
+
+    /// @brief
+    ///   Free shader-visible sampler descriptor heaps.
+    ///
+    /// @param fenceValue
+    ///   A fence value that indicates when these dynamic descriptor heaps could be reused.
+    /// @param count
+    ///   Number of shader-visible sampler descriptor heaps to be freed.
+    /// @param heaps
+    ///   Pointer to start of the descriptor heap array to be freed.
+    InkApi auto freeDynamicSamplerHeaps(std::uint64_t          fenceValue,
+                                        std::size_t            count,
+                                        ID3D12DescriptorHeap **heaps) noexcept -> void;
+
+    /// @brief
     ///   Get render device singleton instance.
     /// @note
     ///   This function is thread-safe. The singleton instance will be initialized when this
@@ -406,6 +450,26 @@ private:
     /// @brief
     ///   Mutex to protect depth stencil view allocation.
     mutable std::mutex m_depthStencilViewAllocationMutex;
+
+    /// @brief
+    ///   Cached dynamic descriptor heaps.
+    ::Concurrency::concurrent_queue<ID3D12DescriptorHeap *> m_dynamicDescriptorHeaps;
+
+    /// @brief
+    ///   Retired shader-visible CBV/SRV/UAV descriptor heaps.
+    std::queue<std::pair<std::uint64_t, ID3D12DescriptorHeap *>> m_dynamicViewHeaps;
+
+    /// @brief
+    ///   Retired shader-visible sampler descriptor heap.
+    std::queue<std::pair<std::uint64_t, ID3D12DescriptorHeap *>> m_dynamicSamplerHeaps;
+
+    /// @brief
+    ///   Mutex to protect retired dynamic CBV/SRV/UAV descriptor heaps.
+    mutable std::mutex m_dynamicViewHeapMutex;
+
+    /// @brief
+    ///   Mutex to protect retired dynamic sampler descriptor heaps.
+    mutable std::mutex m_dynamicSamplerHeapMutex;
 };
 
 } // namespace ink

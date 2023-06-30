@@ -88,7 +88,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
-      <WarningLevel>Level3</WarningLevel>
+      <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>INK_BUILD_DLL;WIN32_LEAN_AND_MEAN;NOMINMAX;WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
@@ -102,7 +102,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
-      <WarningLevel>Level3</WarningLevel>
+      <WarningLevel>Level4</WarningLevel>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
@@ -120,7 +120,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <WarningLevel>Level3</WarningLevel>
+      <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>INK_BUILD_DLL;WIN32_LEAN_AND_MEAN;NOMINMAX;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
@@ -134,7 +134,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <WarningLevel>Level3</WarningLevel>
+      <WarningLevel>Level4</WarningLevel>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
@@ -168,6 +168,7 @@
     <ClInclude Include="include\ink\core\window.h" />
     <ClInclude Include="include\ink\math\vector.h" />
     <ClInclude Include="include\ink\render\color.h" />
+    <ClInclude Include="include\ink\render\command_buffer.h" />
     <ClInclude Include="include\ink\render\descriptor.h" />
     <ClInclude Include="include\ink\render\device.h" />
     <ClInclude Include="include\ink\render\pipeline.h" />
@@ -180,6 +181,7 @@
     <ClCompile Include="src\core\log.cpp" />
     <ClCompile Include="src\core\string.cpp" />
     <ClCompile Include="src\core\window.cpp" />
+    <ClCompile Include="src\render\command_buffer.cpp" />
     <ClCompile Include="src\render\descriptor.cpp" />
     <ClCompile Include="src\render\device.cpp" />
     <ClCompile Include="src\render\pipeline.cpp" />

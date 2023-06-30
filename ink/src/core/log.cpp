@@ -1,4 +1,11 @@
+#if !defined(__clang__) && defined(_MSC_VER)
+#    pragma warning(push)
+#    pragma warning(disable : 4127)
+#endif
 #include "ink/core/log.h"
+#if !defined(__clang__) && defined(_MSC_VER)
+#    pragma warning(pop)
+#endif
 
 #include <Windows.h>
 

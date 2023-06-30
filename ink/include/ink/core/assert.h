@@ -57,8 +57,8 @@ auto assertFailed(const char16_t       *file,
 #    define inkAssert(exp, ...) ((void)0)
 #else
 #    define inkAssert(exp, ...)                                                                    \
-        (void)(!!(exp) ||                                                                          \
+        (void)((!!(exp)) ||                                                                        \
                (::ink::detail::assertFailed(INK_UTF16(__FILE__),                                   \
-                                            static_cast<std::uint32_t>(__LINE__), __VA_ARGS__),    \
+                                            static_cast<::std::uint32_t>(__LINE__), __VA_ARGS__),  \
                 0))
 #endif

@@ -92,7 +92,12 @@ ink::RenderDevice::RenderDevice() noexcept
       m_constantBufferViewAllocateMutex(),
       m_samplerViewAllocationMutex(),
       m_renderTargetViewAllocationMutex(),
-      m_depthStencilViewAllocationMutex() {
+      m_depthStencilViewAllocationMutex(),
+      m_dynamicDescriptorHeaps(),
+      m_dynamicViewHeaps(),
+      m_dynamicSamplerHeaps(),
+      m_dynamicViewHeapMutex(),
+      m_dynamicSamplerHeapMutex() {
     [[maybe_unused]] HRESULT hr;
 
     bool debugLayerEnabled = false;
@@ -184,6 +189,15 @@ ink::RenderDevice::RenderDevice() noexcept
 
 ink::RenderDevice::~RenderDevice() noexcept {
     this->sync();
+
+    { // Release all dynamic descriptor heaps.
+        auto begin = m_dynamicDescriptorHeaps.unsafe_begin();
+        auto end   = m_dynamicDescriptorHeaps.unsafe_end();
+        while (begin != end) {
+            (*begin)->Release();
+            ++begin;
+        }
+    }
 
     { // Release all CPU descriptor heaps.
         auto begin = m_descriptorHeapPool.unsafe_begin();
@@ -526,6 +540,93 @@ auto ink::RenderDevice::newDepthStencilView() noexcept -> D3D12_CPU_DESCRIPTOR_H
 
 auto ink::RenderDevice::freeDepthStencilView(D3D12_CPU_DESCRIPTOR_HANDLE handle) noexcept -> void {
     m_freeDepthStencilViewQueue.push(handle);
+}
+
+auto ink::RenderDevice::newDynamicViewHeap() noexcept -> ID3D12DescriptorHeap * {
+    { // Try to get one from retired queue.
+        std::lock_guard<std::mutex> lock(m_dynamicViewHeapMutex);
+        if (!m_dynamicViewHeaps.empty()) {
+            auto &front = m_dynamicViewHeaps.front();
+            if (isFenceReached(front.first)) {
+                ID3D12DescriptorHeap *heap = front.second;
+                m_dynamicViewHeaps.pop();
+                return heap;
+            }
+        }
+    }
+
+    // Create a new shader-visible descriptor heap.
+    [[maybe_unused]] HRESULT hr;
+    ID3D12DescriptorHeap    *heap;
+
+    const D3D12_DESCRIPTOR_HEAP_DESC desc{
+        /* Type           = */ D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
+        /* NumDescriptors = */ 1024U,
+        /* Flags          = */ D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
+        /* NodeMask       = */ 0,
+    };
+
+    hr = m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&heap));
+    inkAssert(SUCCEEDED(hr),
+              u"Failed to create shader-visible CBV/SRV/UAV descriptor heap: 0x{:X}.",
+              static_cast<std::uint32_t>(hr));
+
+    m_dynamicDescriptorHeaps.push(heap);
+    return heap;
+}
+
+auto ink::RenderDevice::freeDynamicViewHeaps(std::uint64_t          fenceValue,
+                                             std::size_t            count,
+                                             ID3D12DescriptorHeap **heaps) noexcept -> void {
+    ID3D12DescriptorHeap      **heapEnd = heaps + count;
+    std::lock_guard<std::mutex> lock(m_dynamicViewHeapMutex);
+    while (heaps != heapEnd) {
+        m_dynamicViewHeaps.emplace(fenceValue, *heaps);
+        ++heaps;
+    }
+}
+
+auto ink::RenderDevice::newDynamicSamplerHeap() noexcept -> ID3D12DescriptorHeap * {
+    { // Try to get one from retired queue.
+        std::lock_guard<std::mutex> lock(m_dynamicSamplerHeapMutex);
+        if (!m_dynamicSamplerHeaps.empty()) {
+            auto &front = m_dynamicSamplerHeaps.front();
+            if (isFenceReached(front.first)) {
+                ID3D12DescriptorHeap *heap = front.second;
+                m_dynamicSamplerHeaps.pop();
+                return heap;
+            }
+        }
+    }
+
+    // Create a new shader-visible descriptor heap.
+    [[maybe_unused]] HRESULT hr;
+    ID3D12DescriptorHeap    *heap;
+
+    const D3D12_DESCRIPTOR_HEAP_DESC desc{
+        /* Type           = */ D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER,
+        /* NumDescriptors = */ 256U,
+        /* Flags          = */ D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
+        /* NodeMask       = */ 0,
+    };
+
+    hr = m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&heap));
+    inkAssert(SUCCEEDED(hr), u"Failed to create shader-visible sampler descriptor heap: 0x{:X}.",
+              static_cast<std::uint32_t>(hr));
+
+    m_dynamicDescriptorHeaps.push(heap);
+    return heap;
+}
+
+auto ink::RenderDevice::freeDynamicSamplerHeaps(std::uint64_t          fenceValue,
+                                                std::size_t            count,
+                                                ID3D12DescriptorHeap **heaps) noexcept -> void {
+    ID3D12DescriptorHeap      **heapEnd = heaps + count;
+    std::lock_guard<std::mutex> lock(m_dynamicSamplerHeapMutex);
+    while (heaps != heapEnd) {
+        m_dynamicSamplerHeaps.emplace(fenceValue, *heaps);
+        ++heaps;
+    }
 }
 
 auto ink::RenderDevice::singleton() noexcept -> RenderDevice & {

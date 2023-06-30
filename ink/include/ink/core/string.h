@@ -12,7 +12,7 @@
 
 namespace ink {
 
-class InkApi StringView {
+class StringView {
 public:
     using traits_type     = std::char_traits<char16_t>;
     using value_type      = char16_t;
@@ -735,7 +735,7 @@ public:
     /// @return
     ///   A string view array that contains the split result.
     [[nodiscard]]
-    auto split(value_type delim) const noexcept -> std::vector<StringView>;
+    InkApi auto split(value_type delim) const noexcept -> std::vector<StringView>;
 
     /// @brief
     ///   Split this string view by any of the characters in the delimiter character set.
@@ -747,7 +747,7 @@ public:
     /// @return
     ///   A string view array that contains the split result.
     [[nodiscard]]
-    auto splitByAnyOf(StringView delims) const noexcept -> std::vector<StringView>;
+    InkApi auto splitByAnyOf(StringView delims) const noexcept -> std::vector<StringView>;
 
     /// @brief
     ///   Convert this UTF-16 string to an UTF-8 string.
@@ -755,7 +755,7 @@ public:
     /// @return
     ///   A std::string that contains the UTF-8 encoded string of this string view.
     [[nodiscard]]
-    auto toUTF8String() const noexcept -> std::string;
+    InkApi auto toUTF8String() const noexcept -> std::string;
 
     /// @brief
     ///   Calculate hash value of this string view.
@@ -870,7 +870,7 @@ struct fmt::formatter<ink::StringView, char16_t>
 
 namespace ink {
 
-class InkApi String {
+class String {
 public:
     using traits_type     = std::char_traits<char16_t>;
     using value_type      = char16_t;
@@ -913,28 +913,28 @@ public:
     ///   Pointer to start of the character sequence.
     /// @param len
     ///   Number of characters in the sequence.
-    String(const value_type *ptr, size_type len) noexcept;
+    InkApi String(const value_type *ptr, size_type len) noexcept;
 
     /// @brief
     ///   Create a string from a null-terminated string.
     ///
     /// @param str
     ///   Pointer to start of the null-terminated string.
-    String(const value_type *ptr) noexcept;
+    InkApi String(const value_type *ptr) noexcept;
 
     /// @brief
     ///   Create a string from a string view.
     ///
     /// @param str
     ///   The string to be copied from.
-    String(StringView str) noexcept;
+    InkApi String(StringView str) noexcept;
 
     /// @brief
     ///   Copy constructor of string.
     ///
     /// @param other
     ///   The string to be copied from.
-    String(const String &other) noexcept;
+    InkApi String(const String &other) noexcept;
 
     /// @brief
     ///   Move constructor of string.
@@ -947,7 +947,7 @@ public:
 
     /// @brief
     ///   Destroy this string object.
-    ~String() noexcept;
+    InkApi ~String() noexcept;
 
     /// @brief
     ///   Assign another string to this one.
@@ -957,7 +957,7 @@ public:
     ///
     /// @return
     ///   Reference to this string.
-    auto assign(const String &other) noexcept -> String &;
+    InkApi auto assign(const String &other) noexcept -> String &;
 
     /// @brief
     ///   Assign another string to this one.
@@ -967,7 +967,7 @@ public:
     ///
     /// @return
     ///   Reference to this string.
-    auto assign(String &&other) noexcept -> String &;
+    InkApi auto assign(String &&other) noexcept -> String &;
 
     /// @brief
     ///   Assign another string to this one.
@@ -977,7 +977,7 @@ public:
     ///
     /// @return
     ///   Reference to this string.
-    auto assign(StringView str) noexcept -> String &;
+    InkApi auto assign(StringView str) noexcept -> String &;
 
     /// @brief
     ///   Assign a sequence of characters to this string.
@@ -1001,7 +1001,7 @@ public:
     ///
     /// @return
     ///   Reference to this string.
-    auto assign(const_pointer ptr) noexcept -> String &;
+    InkApi auto assign(const_pointer ptr) noexcept -> String &;
 
     /// @brief
     ///   Copy assignment of string.
@@ -1230,7 +1230,7 @@ public:
     ///
     /// @param newCap
     ///   Expected number of characters to be stored in this string.
-    auto reserve(size_type newCap) noexcept -> void;
+    InkApi auto reserve(size_type newCap) noexcept -> void;
 
     /// @brief
     ///   Get capacity of this string.
@@ -1269,7 +1269,7 @@ public:
     ///
     /// @return
     ///   Reference to this string.
-    auto insert(size_type position, const_pointer str, size_type count) noexcept -> String &;
+    InkApi auto insert(size_type position, const_pointer str, size_type count) noexcept -> String &;
 
     /// @brief
     ///   Insert a string to the specified position of this string.
@@ -1303,7 +1303,7 @@ public:
     ///
     /// @return
     ///   Reference to this string.
-    auto insert(size_type position, size_type count, value_type ch) noexcept -> String &;
+    InkApi auto insert(size_type position, size_type count, value_type ch) noexcept -> String &;
 
     /// @brief
     ///   Remove @p count characters from the specified index.
@@ -1316,7 +1316,7 @@ public:
     ///
     /// @return
     ///   Reference to this string.
-    auto remove(size_type from, size_type count) noexcept -> String &;
+    InkApi auto remove(size_type from, size_type count) noexcept -> String &;
 
     /// @brief
     ///   Remove all characters in the given range.
@@ -1330,7 +1330,7 @@ public:
     ///
     /// @return
     ///   Reference to this string.
-    auto remove(const_iterator first, const_iterator last) noexcept -> String &;
+    InkApi auto remove(const_iterator first, const_iterator last) noexcept -> String &;
 
     /// @brief
     ///   Remove all characters after the specified index.
@@ -1340,18 +1340,18 @@ public:
     ///
     /// @return
     ///   Reference to this string.
-    auto removeAfter(size_type index) noexcept -> String &;
+    InkApi auto removeAfter(size_type index) noexcept -> String &;
 
     /// @brief
     ///   Append the specified character to the end of this string.
     ///
     /// @param ch
     ///   The character to be appended.
-    auto push_back(value_type ch) noexcept -> void;
+    InkApi auto push_back(value_type ch) noexcept -> void;
 
     /// @brief
     ///   Remove the last character in this string. Empty check is performed.
-    auto pop_back() noexcept -> void;
+    InkApi auto pop_back() noexcept -> void;
 
     /// @brief
     ///   Append a sequence of characters to the end of this string.
@@ -1363,7 +1363,7 @@ public:
     ///
     /// @return
     ///   Reference to this string.
-    auto append(const value_type *str, size_type count) noexcept -> String &;
+    InkApi auto append(const value_type *str, size_type count) noexcept -> String &;
 
     /// @brief
     ///   Append @p count copies of the specified character at the end of this string.
@@ -1375,7 +1375,7 @@ public:
     ///
     /// @return
     ///   Reference to this string.
-    auto append(size_type count, value_type ch) noexcept -> String &;
+    InkApi auto append(size_type count, value_type ch) noexcept -> String &;
 
     /// @brief
     ///   Append the specified string to the end of this string.
@@ -1629,7 +1629,7 @@ public:
     ///   New size of this string.
     /// @param ch
     ///   Character to initialize the new memory with.
-    auto resize(size_type count, value_type ch = value_type()) noexcept -> void;
+    InkApi auto resize(size_type count, value_type ch = value_type()) noexcept -> void;
 
     /// @brief
     ///   Find index of the first occurance of the specified string pattern in this string.
@@ -1778,7 +1778,7 @@ public:
     ///
     /// @return
     ///   Reference to this string.
-    auto trimStart(StringView charSet = u" \f\n\r\t\v") noexcept -> String &;
+    InkApi auto trimStart(StringView charSet = u" \f\n\r\t\v") noexcept -> String &;
 
     /// @brief
     ///   Remove all trailing characters that are contained in the specified character set.
@@ -1789,7 +1789,7 @@ public:
     ///
     /// @return
     ///   Reference to this string.
-    auto trimEnd(StringView charSet = u" \f\n\r\t\v") noexcept -> String &;
+    InkApi auto trimEnd(StringView charSet = u" \f\n\r\t\v") noexcept -> String &;
 
     /// @brief
     ///   Remove all leading and trailing characters that are contained in the specified character
@@ -1838,14 +1838,14 @@ public:
     ///
     /// @return
     ///   Reference to this string.
-    auto toLower() noexcept -> String &;
+    InkApi auto toLower() noexcept -> String &;
 
     /// @brief
     ///   Convert all English alphabets to uppercase.
     ///
     /// @return
     ///   Reference to this string.
-    auto toUpper() noexcept -> String &;
+    InkApi auto toUpper() noexcept -> String &;
 
     /// @brief
     ///   Calculate hash value of this string.

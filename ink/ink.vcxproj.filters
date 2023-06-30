@@ -72,6 +72,9 @@
     <ClInclude Include="include\ink\render\pipeline.h">
       <Filter>include\ink\render</Filter>
     </ClInclude>
+    <ClInclude Include="include\ink\render\command_buffer.h">
+      <Filter>include\ink\render</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\core\exception.cpp">
@@ -102,6 +105,9 @@
       <Filter>src\render</Filter>
     </ClCompile>
     <ClCompile Include="src\render\pipeline.cpp">
+      <Filter>src\render</Filter>
+    </ClCompile>
+    <ClCompile Include="src\render\command_buffer.cpp">
       <Filter>src\render</Filter>
     </ClCompile>
   </ItemGroup>

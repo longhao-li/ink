@@ -247,7 +247,7 @@ constexpr auto operator^=(WindowStyle &a, WindowStyle b) noexcept -> WindowStyle
     return (a = (a ^ b));
 }
 
-class InkApi Window {
+class Window {
 public:
     /// @brief
     ///   Create a new window.
@@ -262,10 +262,10 @@ public:
     ///   Expected client height of this window.
     /// @param style
     ///   Style flags of this window. Default window style is titled and visible.
-    Window(StringView    title,
-           std::uint32_t width,
-           std::uint32_t height,
-           WindowStyle   style = WindowStyle::Default) noexcept;
+    InkApi Window(StringView    title,
+                  std::uint32_t width,
+                  std::uint32_t height,
+                  WindowStyle   style = WindowStyle::Default) noexcept;
 
     /// @brief
     ///   Copy constructor of window is disabled.
@@ -277,7 +277,7 @@ public:
 
     /// @brief
     ///   Destroy this window.
-    virtual ~Window() noexcept;
+    InkApi virtual ~Window() noexcept;
 
     /// @brief
     ///   Get title of this window.
@@ -326,11 +326,11 @@ public:
     ///   New client width.
     /// @param height
     ///   New client height.
-    auto resize(std::uint32_t width, std::uint32_t height) noexcept -> void;
+    InkApi auto resize(std::uint32_t width, std::uint32_t height) noexcept -> void;
 
     /// @brief
     ///   Move this window to center of this monitor.
-    auto center() noexcept -> void;
+    InkApi auto center() noexcept -> void;
 
     /// @brief
     ///   Show this window if hidden.
@@ -376,12 +376,12 @@ public:
     ///
     /// @param focused
     ///   Specifies whether this window gained or lost focus.
-    virtual auto onFocus(bool focused) -> void;
+    InkApi virtual auto onFocus(bool focused) -> void;
 
     /// @brief
     ///   Close callback for this window. This method is called before this window is closed. This
     ///   callback may be used to release resources that should be freed before window destroy.
-    virtual auto onClose() -> void;
+    InkApi virtual auto onClose() -> void;
 
     /// @brief
     ///   Character callback for this window. This method is called when this window receives a
@@ -389,7 +389,7 @@ public:
     ///
     /// @param codePoint
     ///   The character unicode code point.
-    virtual auto onChar(char32_t codePoint) -> void;
+    InkApi virtual auto onChar(char32_t codePoint) -> void;
 
     /// @brief
     ///   Key and mouse button callback for this window. This method is called when keyboard key or
@@ -401,7 +401,7 @@ public:
     ///   Specifies key action of the specified key.
     /// @param mods
     ///   Modifier keys that are pressed when the key status is changed.
-    virtual auto onKey(KeyCode key, KeyAction action, Modifier mods) -> void;
+    InkApi virtual auto onKey(KeyCode key, KeyAction action, Modifier mods) -> void;
 
     /// @brief
     ///   Mouse move callback for this window. This callback is called when mouse is moved.
@@ -410,7 +410,7 @@ public:
     ///   New x position of mouse.
     /// @param y
     ///   New y position of mouse.
-    virtual auto onMouseMove(std::int32_t x, std::int32_t y) -> void;
+    InkApi virtual auto onMouseMove(std::int32_t x, std::int32_t y) -> void;
 
     /// @brief
     ///   Mouse wheel callback for this window. This callback is called when mouse wheels.
@@ -425,7 +425,7 @@ public:
     ///   Mouse wheel delta y.
     /// @param mods
     ///   Modifier keys that are pressed when mouse is wheeling.
-    virtual auto
+    InkApi virtual auto
     onMouseWheel(std::int32_t x, std::int32_t y, float deltaX, float deltaY, Modifier mods) -> void;
 
     /// @brief
@@ -435,15 +435,15 @@ public:
     ///   New client width of this window.
     /// @param height
     ///   New client height of this window.
-    virtual auto onResize(std::uint32_t width, std::uint32_t height) -> void;
+    InkApi virtual auto onResize(std::uint32_t width, std::uint32_t height) -> void;
 
     /// @brief
     ///   Window minimize callback for this window. This callback is called if window is minimized.
-    virtual auto onMinimize() -> void;
+    InkApi virtual auto onMinimize() -> void;
 
     /// @brief
     ///   Window maximize callback for this window. This callback is called if window is maximized.
-    virtual auto onMaximize() -> void;
+    InkApi virtual auto onMaximize() -> void;
 
     /// @brief
     ///   Window move callback for this window. This callback is called if window position is
@@ -453,7 +453,7 @@ public:
     ///   New window x coordinate.
     /// @param y
     ///   New window y coordinate.
-    virtual auto onMove(std::int32_t x, std::int32_t y) -> void;
+    InkApi virtual auto onMove(std::int32_t x, std::int32_t y) -> void;
 
     /// @brief
     ///   File drop callback for this window. This callback is called if user try to drop files to
@@ -467,8 +467,8 @@ public:
     ///   Number of files dropped.
     /// @param paths
     ///   Paths of the files dropped to this window.
-    virtual auto onFileDrop(std::int32_t x, std::int32_t y, std::size_t count, String paths[])
-        -> void;
+    InkApi virtual auto
+    onFileDrop(std::int32_t x, std::int32_t y, std::size_t count, String paths[]) -> void;
 
     friend class SwapChain;
 
@@ -485,7 +485,7 @@ protected:
 
     /// @brief
     ///   Window message handler function.
-    static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+    InkApi static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 private:
     /// @brief
