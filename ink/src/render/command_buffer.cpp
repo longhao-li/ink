@@ -295,6 +295,9 @@ auto ink::DynamicDescriptorHeap::submitGraphicsDescriptors(
             case CacheType::ConstantBufferView:
                 m_device->CreateConstantBufferView(&(param->constantBuffer), m_currentHandle);
                 break;
+
+            default:
+                break;
             }
 
             m_currentHandle += m_descriptorSize;
@@ -372,6 +375,9 @@ auto ink::DynamicDescriptorHeap::submitComputeDescriptors(
 
             case CacheType::ConstantBufferView:
                 m_device->CreateConstantBufferView(&(param->constantBuffer), m_currentHandle);
+                break;
+
+            default:
                 break;
             }
 

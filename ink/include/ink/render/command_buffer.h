@@ -15,8 +15,6 @@ private:
         None = 0,
         CpuDescriptor,
         ConstantBufferView,
-        ShaderResourceView,
-        UnorderedAccessView,
     };
 
     struct DescriptorCache {
