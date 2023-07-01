@@ -3,6 +3,8 @@
 #include "ink/render/device.h"
 #include "ink/render/pipeline.h"
 
+#include <stack>
+
 using namespace ink;
 
 ink::DynamicDescriptorHeap::DynamicDescriptorHeap() noexcept
@@ -381,4 +383,557 @@ auto ink::DynamicDescriptorHeap::submitComputeDescriptors(
     if (count != 0)
         m_device->CopyDescriptors(static_cast<UINT>(count), copyDst, copyCount.data(),
                                   static_cast<UINT>(count), copySrc, copyCount.data(), m_heapType);
+}
+
+namespace {
+
+inline constexpr const std::uint32_t DEFAULT_PAGE_SIZE = 0x200000; // 2 MiB
+
+enum class DynamicBufferType {
+    Upload,
+    UnorderedAccess,
+};
+
+class DynamicBufferPage final : public GpuResource {
+public:
+    /// @brief
+    ///   Create a new dynamic buffer page.
+    /// @note
+    ///   Errors are handled with assertions.
+    ///
+    /// @param bufferType
+    ///   Type of this dynamic buffer page.
+    /// @param size
+    ///   Expected size in byte of this dynamic buffer page.
+    DynamicBufferPage(DynamicBufferType bufferType, std::size_t size = DEFAULT_PAGE_SIZE) noexcept;
+
+    /// @brief
+    ///   Move constructor of dynamic buffer page.
+    ///
+    /// @param other
+    ///   The dynamic buffer page to be moved from. The moved dynamic buffer page will be
+    ///   invalidated.
+    DynamicBufferPage(DynamicBufferPage &&other) noexcept;
+
+    /// @brief
+    ///   Destroy this dynamic buffer page.
+    ~DynamicBufferPage() noexcept override;
+
+    /// @brief
+    ///   Map this dynamic buffer page to memory address.
+    /// @note
+    ///   Only available for uplload buffer page.
+    ///
+    /// @tparam T
+    ///   Type of the pointer to be mapped.
+    ///
+    /// @return
+    ///   Pointer to the mapped memory.
+    template <typename T>
+    [[nodiscard]]
+    auto map() const noexcept -> T * {
+        return static_cast<T *>(m_data);
+    }
+
+    /// @brief
+    ///   Get GPU virtual address to start of this dynamic buffer page.
+    ///
+    /// @return
+    ///   GPU virtual address to start of this dynamic buffer page.
+    [[nodiscard]]
+    auto gpuAddress() const noexcept -> std::uint64_t {
+        return m_gpuAddress;
+    }
+
+    /// @brief
+    ///   Checks if this is a default dynamic buffer page.
+    ///
+    /// @return
+    ///   A boolean value that indicates whether this is a default dynamic buffer page.
+    /// @retval true
+    ///   This is a default dynamic buffer page.
+    /// @retval false
+    ///   This is not a default dynamic buffer page.
+    [[nodiscard]]
+    auto isDefaultPage() const noexcept -> bool {
+        return m_size == DEFAULT_PAGE_SIZE;
+    }
+
+    /// @brief
+    ///   Checks if this dynamic buffer page is an upload buffer page.
+    ///
+    /// @return
+    ///   A boolean value that indicates whether this is an upload buffer page.
+    /// @retval true
+    ///   This is an upload buffer page.
+    /// @retval false
+    ///   This is not an upload buffer page.
+    [[nodiscard]]
+    auto isUploadBuffer() const noexcept -> bool {
+        return m_bufferType == DynamicBufferType::Upload;
+    }
+
+private:
+    /// @brief
+    ///   Type of this dynamic buffer page.
+    DynamicBufferType m_bufferType;
+
+    /// @brief
+    ///   Size in byte of this dynamic buffer page.
+    std::size_t m_size;
+
+    /// @brief
+    ///   CPU pointer to start of this dynamic buffer page (upload buffer only).
+    void *m_data;
+
+    /// @brief
+    ///   GPU virtual address to start of this temp buffer page.
+    std::uint64_t m_gpuAddress;
+};
+
+DynamicBufferPage::DynamicBufferPage(DynamicBufferType bufferType, std::size_t size) noexcept
+    : GpuResource(), m_bufferType(bufferType), m_size(size), m_data(), m_gpuAddress() {
+    [[maybe_unused]] HRESULT hr;
+
+    auto &dev = RenderDevice::singleton();
+    if (bufferType == DynamicBufferType::Upload) {
+        const D3D12_HEAP_PROPERTIES heapProps{
+            /* Type                 = */ D3D12_HEAP_TYPE_UPLOAD,
+            /* CPUPageProperty      = */ D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+            /* MemoryPoolPreference = */ D3D12_MEMORY_POOL_UNKNOWN,
+            /* CreationNodeMask     = */ 0,
+            /* VisibleNodeMask      = */ 0,
+        };
+
+        const D3D12_RESOURCE_DESC desc{
+            /* Dimension        = */ D3D12_RESOURCE_DIMENSION_BUFFER,
+            /* Alignment        = */ 0,
+            /* Width            = */ size,
+            /* Height           = */ 1,
+            /* DepthOrArraySize = */ 1,
+            /* MipLevels        = */ 1,
+            /* Format           = */ DXGI_FORMAT_UNKNOWN,
+            /* SampleDesc       = */
+            {
+                /* Count   = */ 1,
+                /* Quality = */ 0,
+            },
+            /* Layout = */ D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+            /* Flags  = */ D3D12_RESOURCE_FLAG_NONE,
+        };
+
+        hr = dev.device()->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
+                                                   D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                                                   IID_PPV_ARGS(m_resource.GetAddressOf()));
+        inkAssert(SUCCEEDED(hr),
+                  u"Failed to create ID3D12Resource for dynamic buffer page: 0x{:X}.",
+                  static_cast<std::uint32_t>(hr));
+
+        m_usageState = D3D12_RESOURCE_STATE_GENERIC_READ;
+        m_resource->Map(0, nullptr, &m_data);
+        m_gpuAddress = m_resource->GetGPUVirtualAddress();
+    } else {
+        const D3D12_HEAP_PROPERTIES heapProps{
+            /* Type                 = */ D3D12_HEAP_TYPE_DEFAULT,
+            /* CPUPageProperty      = */ D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+            /* MemoryPoolPreference = */ D3D12_MEMORY_POOL_UNKNOWN,
+            /* CreationNodeMask     = */ 0,
+            /* VisibleNodeMask      = */ 0,
+        };
+
+        const D3D12_RESOURCE_DESC desc{
+            /* Dimension        = */ D3D12_RESOURCE_DIMENSION_BUFFER,
+            /* Alignment        = */ 0,
+            /* Width            = */ size,
+            /* Height           = */ 1,
+            /* DepthOrArraySize = */ 1,
+            /* MipLevels        = */ 1,
+            /* Format           = */ DXGI_FORMAT_UNKNOWN,
+            /* SampleDesc       = */
+            {
+                /* Count   = */ 1,
+                /* Quality = */ 0,
+            },
+            /* Layout = */ D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+            /* Flags  = */ D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+        };
+
+        hr =
+            dev.device()->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, state(),
+                                                  nullptr, IID_PPV_ARGS(m_resource.GetAddressOf()));
+        inkAssert(
+            SUCCEEDED(hr),
+            u"Failed to create ID3D12Resource for dynamic unordered access buffer page: 0x{:X}.",
+            static_cast<std::uint32_t>(hr));
+
+        m_gpuAddress = m_resource->GetGPUVirtualAddress();
+    }
+}
+
+DynamicBufferPage::DynamicBufferPage(DynamicBufferPage &&other) noexcept
+    : GpuResource(static_cast<GpuResource &&>(other)),
+      m_bufferType(other.m_bufferType),
+      m_size(other.m_size),
+      m_data(other.m_data),
+      m_gpuAddress(other.m_gpuAddress) {
+    other.m_data = nullptr;
+}
+
+DynamicBufferPage::~DynamicBufferPage() noexcept {
+    if (m_data != nullptr)
+        m_resource->Unmap(0, nullptr);
+}
+
+class DynamicBufferPageManager {
+public:
+    /// @brief
+    ///   Create a dynamic buffer page manager.
+    DynamicBufferPageManager() noexcept;
+
+    /// @brief
+    ///   Destroy this dynamic buffer page manager and release all pages.
+    ~DynamicBufferPageManager() noexcept;
+
+    /// @brief
+    ///   Allocate a new dynamic upload buffer page.
+    ///
+    /// @param size
+    ///   Expected size in byte of this new dynamic buffer page. This value will be aligned up to
+    ///   256 bytes.
+    ///
+    /// @return
+    ///   Pointer to the new dynamic upload buffer page.
+    [[nodiscard]]
+    auto newUploadPage(std::size_t size) noexcept -> DynamicBufferPage *;
+
+    /// @brief
+    ///   Allocate a new dynamic unordered access buffer page.
+    ///
+    /// @param size
+    ///   Expected size in byte of this new dynamic buffer page. This value will be aligned up to
+    ///   256 bytes.
+    ///
+    /// @return
+    ///   Pointer to the new dynamic access buffer buffer page.
+    [[nodiscard]]
+    auto newUnorderedAccessPage(std::size_t size) noexcept -> DynamicBufferPage *;
+
+    /// @brief
+    ///   Free retired pages.
+    ///
+    /// @param fenceValue
+    ///   Fence value that indicates when the freed pages could be reused.
+    /// @param count
+    ///   Number of pages to be freed.
+    /// @param pages
+    ///   An array of dynamic buffer pages to be freed.
+    auto freePages(std::uint64_t fenceValue, std::size_t count, DynamicBufferPage **pages) noexcept
+        -> void;
+
+    /// @brief
+    ///   Get singleton instance of dynamic buffer page manager.
+    ///
+    /// @return
+    ///   Reference to the dynamic buffer page manager singleton.
+    [[nodiscard]]
+    static auto singleton() noexcept -> DynamicBufferPageManager &;
+
+private:
+    /// @brief
+    ///   The D3D12 device that is used to sychnorize with GPU.
+    RenderDevice &m_renderDevice;
+
+    /// @brief
+    ///   Temporary buffer page pool.
+    std::stack<DynamicBufferPage> m_pagePool;
+
+    /// @brief
+    ///   Mutex to protect page pool.
+    mutable std::mutex m_pagePoolMutex;
+
+    /// @brief
+    ///   Retired upload pages to be reused.
+    std::queue<std::pair<std::uint64_t, DynamicBufferPage *>> m_retiredUploadPages;
+
+    /// @brief
+    ///   Mutex to protect retired upload page queue.
+    mutable std::mutex m_uploadPageQueueMutex;
+
+    /// @brief
+    ///   Retired unordered access pages to be reused.
+    std::queue<std::pair<std::uint64_t, DynamicBufferPage *>> m_retiredUnorderedAccessPages;
+
+    /// @brief
+    ///   Mutex to protect retired unordered access queue.
+    mutable std::mutex m_unorderedAccessQueueMutex;
+
+    /// @brief
+    ///   Queue of pages to be deleted.
+    std::queue<std::pair<std::uint64_t, DynamicBufferPage *>> m_deletionQueue;
+
+    /// @brief
+    ///   Mutex to protect deletion queue.
+    mutable std::mutex m_deletionQueueMutex;
+};
+
+DynamicBufferPageManager::DynamicBufferPageManager() noexcept
+    : m_renderDevice(RenderDevice::singleton()),
+      m_pagePool(),
+      m_pagePoolMutex(),
+      m_retiredUploadPages(),
+      m_uploadPageQueueMutex(),
+      m_retiredUnorderedAccessPages(),
+      m_unorderedAccessQueueMutex(),
+      m_deletionQueue(),
+      m_deletionQueueMutex() {}
+
+DynamicBufferPageManager::~DynamicBufferPageManager() noexcept {
+    m_renderDevice.sync();
+    std::lock_guard<std::mutex> lock(m_deletionQueueMutex);
+    while (!m_deletionQueue.empty()) {
+        delete m_deletionQueue.front().second;
+        m_deletionQueue.pop();
+    }
+}
+
+auto DynamicBufferPageManager::newUploadPage(std::size_t size) noexcept -> DynamicBufferPage * {
+    // Align up size.
+    size = (size + 0xFF) & ~std::size_t(0xFF);
+
+    if (size <= DEFAULT_PAGE_SIZE) {
+        { // Try to get a free page from free page queue.
+            std::lock_guard<std::mutex> lock(m_uploadPageQueueMutex);
+            if (!m_retiredUploadPages.empty()) {
+                auto &front = m_retiredUploadPages.front();
+                if (m_renderDevice.isFenceReached(front.first)) {
+                    auto *page = front.second;
+                    m_retiredUploadPages.pop();
+                    return page;
+                }
+            }
+        }
+
+        { // Create a new page.
+            DynamicBufferPage           newPage(DynamicBufferType::Upload);
+            std::lock_guard<std::mutex> lock(m_pagePoolMutex);
+            return std::addressof(m_pagePool.emplace(std::move(newPage)));
+        }
+    }
+
+    return new DynamicBufferPage(DynamicBufferType::Upload, size);
+}
+
+auto DynamicBufferPageManager::newUnorderedAccessPage(std::size_t size) noexcept
+    -> DynamicBufferPage * {
+    // Align up size.
+    size = (size + 0xFF) & ~std::size_t(0xFF);
+
+    if (size <= DEFAULT_PAGE_SIZE) {
+        { // Try to get a free page from free page queue.
+            std::lock_guard<std::mutex> lock(m_unorderedAccessQueueMutex);
+            if (!m_retiredUnorderedAccessPages.empty()) {
+                auto &front = m_retiredUnorderedAccessPages.front();
+                if (m_renderDevice.isFenceReached(front.first)) {
+                    auto *page = front.second;
+                    m_retiredUnorderedAccessPages.pop();
+                    return page;
+                }
+            }
+        }
+
+        { // Create a new page.
+            DynamicBufferPage newPage(DynamicBufferType::UnorderedAccess);
+
+            std::lock_guard<std::mutex> lock(m_pagePoolMutex);
+            return std::addressof(m_pagePool.emplace(std::move(newPage)));
+        }
+    }
+
+    return new DynamicBufferPage(DynamicBufferType::UnorderedAccess, size);
+}
+
+auto DynamicBufferPageManager::freePages(std::uint64_t       fenceValue,
+                                         std::size_t         count,
+                                         DynamicBufferPage **pages) noexcept -> void {
+    DynamicBufferPage **pagesEnd = pages + count;
+
+    { // Free default upload pages.
+        std::lock_guard<std::mutex> lock(m_uploadPageQueueMutex);
+        for (auto *page = pages; page != pagesEnd; ++page) {
+            if (!(*page)->isDefaultPage())
+                continue;
+
+            if (!(*page)->isUploadBuffer())
+                continue;
+
+            m_retiredUploadPages.emplace(fenceValue, *page);
+        }
+    }
+
+    { // Free unordered access pages.
+        std::lock_guard<std::mutex> lock(m_unorderedAccessQueueMutex);
+        for (auto *page = pages; page != pagesEnd; ++page) {
+            if (!(*page)->isDefaultPage())
+                continue;
+
+            if ((*page)->isUploadBuffer())
+                continue;
+
+            m_retiredUnorderedAccessPages.emplace(fenceValue, *page);
+        }
+    }
+
+    { // Free deletion pages.
+        std::lock_guard<std::mutex> lock(m_deletionQueueMutex);
+        while (!m_deletionQueue.empty()) {
+            auto &front = m_deletionQueue.front();
+            if (m_renderDevice.isFenceReached(front.first)) {
+                delete front.second;
+                m_deletionQueue.pop();
+            } else {
+                break;
+            }
+        }
+
+        for (auto *page = pages; page != pagesEnd; ++page) {
+            if ((*page)->isDefaultPage())
+                continue;
+            m_deletionQueue.emplace(fenceValue, *page);
+        }
+    }
+}
+
+auto DynamicBufferPageManager::singleton() noexcept -> DynamicBufferPageManager & {
+    static DynamicBufferPageManager instance;
+    return instance;
+}
+
+} // namespace
+
+ink::DynamicBufferAllocator::DynamicBufferAllocator() noexcept
+    : m_uploadPage(),
+      m_uploadPageOffset(),
+      m_unorderedAccessPage(),
+      m_unorderedAccessPageOffset(),
+      m_retiredPages() {}
+
+ink::DynamicBufferAllocator::~DynamicBufferAllocator() noexcept {
+    if (m_uploadPage != nullptr)
+        m_retiredPages.push_back(m_uploadPage);
+    if (m_unorderedAccessPage != nullptr)
+        m_retiredPages.push_back(m_unorderedAccessPage);
+
+    if (!m_retiredPages.empty()) {
+        auto &dev        = RenderDevice::singleton();
+        auto  fenceValue = dev.signalFence();
+
+        auto &manager = DynamicBufferPageManager::singleton();
+        manager.freePages(fenceValue, m_retiredPages.size(),
+                          reinterpret_cast<DynamicBufferPage **>(m_retiredPages.data()));
+    }
+}
+
+auto ink::DynamicBufferAllocator::newUploadBuffer(std::size_t size) noexcept
+    -> DynamicBufferAllocation {
+    // Align up allocate size.
+    size = (size + 0xFF) & ~std::size_t(0xFF);
+
+    auto &manager = DynamicBufferPageManager::singleton();
+
+    // Allocate a single page if size is greater than default page size.
+    if (size >= DEFAULT_PAGE_SIZE) {
+        DynamicBufferPage *page = manager.newUploadPage(size);
+        m_retiredPages.push_back(page);
+
+        return DynamicBufferAllocation{
+            /* resource   = */ page,
+            /* size       = */ size,
+            /* offset     = */ 0,
+            /* data       = */ page->map<void>(),
+            /* gpuAddress = */ page->gpuAddress(),
+        };
+    }
+
+    // No enough space in current page, retire current page.
+    if (m_uploadPage != nullptr && m_uploadPageOffset + size > DEFAULT_PAGE_SIZE) {
+        m_retiredPages.push_back(m_uploadPage);
+        m_uploadPage = nullptr;
+    }
+
+    // Allocate a new page if current page is null.
+    if (m_uploadPage == nullptr) {
+        m_uploadPage       = manager.newUploadPage(DEFAULT_PAGE_SIZE);
+        m_uploadPageOffset = 0;
+    }
+
+    auto *const page = static_cast<DynamicBufferPage *>(m_uploadPage);
+
+    DynamicBufferAllocation allocation{
+        /* resource   = */ page,
+        /* size       = */ size,
+        /* offset     = */ m_uploadPageOffset,
+        /* data       = */ page->map<std::uint8_t>() + m_uploadPageOffset,
+        /* gpuAddress = */ page->gpuAddress() + m_uploadPageOffset,
+    };
+
+    m_uploadPageOffset += size;
+    return allocation;
+}
+
+auto ink::DynamicBufferAllocator::newUnorderedAccessBuffer(std::size_t size) noexcept
+    -> DynamicBufferAllocation {
+    // Align up allocate size.
+    size = (size + 0xFF) & ~std::size_t(0xFF);
+
+    auto &manager = DynamicBufferPageManager::singleton();
+
+    // Allocate a single page if size is greater than default page size.
+    if (size >= DEFAULT_PAGE_SIZE) {
+        auto *page = manager.newUnorderedAccessPage(size);
+        m_retiredPages.push_back(page);
+
+        return DynamicBufferAllocation{
+            /* resource   = */ page,
+            /* size       = */ size,
+            /* offset     = */ 0,
+            /* data       = */ page->map<void>(),
+            /* gpuAddress = */ page->gpuAddress(),
+        };
+    }
+
+    // There is no enough space in current page, retire current page.
+    if (m_unorderedAccessPage != nullptr &&
+        m_unorderedAccessPageOffset + size > DEFAULT_PAGE_SIZE) {
+        m_retiredPages.push_back(m_unorderedAccessPage);
+        m_unorderedAccessPage = nullptr;
+    }
+
+    // Allocate a new page if current page is null.
+    if (m_unorderedAccessPage == nullptr) {
+        m_unorderedAccessPage       = manager.newUnorderedAccessPage(DEFAULT_PAGE_SIZE);
+        m_unorderedAccessPageOffset = 0;
+    }
+
+    auto *const page = static_cast<DynamicBufferPage *>(m_unorderedAccessPage);
+
+    DynamicBufferAllocation allocation{
+        /* resource   = */ page,
+        /* size       = */ size,
+        /* offset     = */ m_unorderedAccessPageOffset,
+        /* data       = */ page->map<std::uint8_t>() + m_unorderedAccessPageOffset,
+        /* gpuAddress = */ page->gpuAddress() + m_unorderedAccessPageOffset,
+    };
+
+    m_unorderedAccessPageOffset += size;
+    return allocation;
+}
+
+auto ink::DynamicBufferAllocator::reset(std::uint64_t fenceValue) noexcept -> void {
+    auto &manager = DynamicBufferPageManager::singleton();
+
+    if (!m_retiredPages.empty()) {
+        manager.freePages(fenceValue, m_retiredPages.size(),
+                          reinterpret_cast<DynamicBufferPage **>(m_retiredPages.data()));
+        m_retiredPages.clear();
+    }
 }

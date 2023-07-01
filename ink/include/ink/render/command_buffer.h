@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ink/render/descriptor.h"
+#include "ink/render/resource.h"
 
 #include <vector>
 
@@ -239,6 +239,104 @@ private:
     /// @brief
     ///   Cached descriptor table ranges for compute root signature.
     DescriptorTableRange m_computeTableRange[64];
+};
+
+struct DynamicBufferAllocation {
+    /// @brief
+    ///   The GPU resource that this allocation belongs to.
+    GpuResource *resource;
+
+    /// @brief
+    ///   Size in byte of this allocation.
+    std::size_t size;
+
+    /// @brief
+    ///   Offset from start of the GPU resource. This offset has already been applied to the CPU
+    ///   address and GPU address. Do not apply this offset again.
+    std::size_t offset;
+
+    /// @brief
+    ///   CPU pointer to start of this allocation.
+    void *data;
+
+    /// @brief
+    ///   GPU virtual address to start of this allocation.
+    std::uint64_t gpuAddress;
+};
+
+class DynamicBufferAllocator {
+public:
+    /// @brief
+    ///   Create an empty dynamic buffer allocator.
+    InkApi DynamicBufferAllocator() noexcept;
+
+    /// @brief
+    ///   Copy constructor of dynamic buffer allocator is disabled.
+    DynamicBufferAllocator(const DynamicBufferAllocator &) = delete;
+
+    /// @brief
+    ///   Copy assignment of dynamic buffer allocator is disabled.
+    auto operator=(const DynamicBufferAllocator &) = delete;
+
+    /// @brief
+    ///   Destroy this dynamic buffer allocator and free all buffers.
+    InkApi ~DynamicBufferAllocator() noexcept;
+
+    /// @brief
+    ///   Allocate a temporary upload buffer.
+    /// @note
+    ///   Errors are handled with assertions.
+    ///
+    /// @param size
+    ///   Expected size in byte of this temporary upload buffer. This value will always be aligned
+    ///   up with 256 bytes.
+    ///
+    /// @return
+    ///   The temporary upload buffer allocation.
+    [[nodiscard]]
+    InkApi auto newUploadBuffer(std::size_t size) noexcept -> DynamicBufferAllocation;
+
+    /// @brief
+    ///   Allocate a temporary unordered access buffer.
+    /// @note
+    ///   Errors are handled with assertions.
+    ///
+    /// @param size
+    ///   Expected size in byte of this temporary unordered access buffer. This value will always be
+    ///   aligned up with 256 bytes.
+    ///
+    /// @return
+    ///   The temporary unordered access buffer allocation.
+    [[nodiscard]]
+    InkApi auto newUnorderedAccessBuffer(std::size_t size) noexcept -> DynamicBufferAllocation;
+
+    /// @brief
+    ///   Free all retired buffers.
+    ///
+    /// @param fenceValue
+    ///   A fence value that indicates when the retired buffers could be reused.
+    InkApi auto reset(std::uint64_t fenceValue) noexcept -> void;
+
+private:
+    /// @brief
+    ///   Current upload buffer page. This is type-erased pointer.
+    void *m_uploadPage;
+
+    /// @brief
+    ///   Current offset from start of current upload page.
+    std::size_t m_uploadPageOffset;
+
+    /// @brief
+    ///   Current unordered access buffer page. This is type-erased pointer.
+    void *m_unorderedAccessPage;
+
+    /// @brief
+    ///   Offset from start of current unordered access page.
+    std::size_t m_unorderedAccessPageOffset;
+
+    /// @brief
+    ///   Retired buffer pages.
+    std::vector<void *> m_retiredPages;
 };
 
 } // namespace ink
