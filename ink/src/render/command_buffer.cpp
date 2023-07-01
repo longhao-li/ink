@@ -943,3 +943,225 @@ auto ink::DynamicBufferAllocator::reset(std::uint64_t fenceValue) noexcept -> vo
         m_retiredPages.clear();
     }
 }
+
+ink::CommandBuffer::CommandBuffer() noexcept
+    : m_cmdList(),
+      m_allocator(),
+      m_lastSubmitFenceValue(),
+      m_bufferAllocator(),
+      m_graphicsRootSignature(),
+      m_computeRootSignature(),
+      m_dynamicViewHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV),
+      m_dynamicSamplerHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER) {
+    [[maybe_unused]] HRESULT hr;
+
+    auto &dev = RenderDevice::singleton();
+
+    // Try to acquire a new command allocator.
+    m_allocator = dev.newCommandAllocator();
+    hr = dev.device()->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_allocator, nullptr,
+                                         IID_PPV_ARGS(m_cmdList.GetAddressOf()));
+    inkAssert(SUCCEEDED(hr), u"Failed to create direct command list: 0x{:X}.",
+              static_cast<std::uint32_t>(hr));
+}
+
+ink::CommandBuffer::~CommandBuffer() noexcept {
+    if (m_allocator != nullptr) {
+        auto &dev = RenderDevice::singleton();
+        dev.freeCommandAllocator(m_lastSubmitFenceValue, m_allocator);
+    }
+}
+
+auto ink::CommandBuffer::submit() noexcept -> std::uint64_t {
+    m_cmdList->Close();
+
+    auto &dev = RenderDevice::singleton();
+
+    { // Submit command list to execute.
+        ID3D12CommandList *list = m_cmdList.Get();
+        dev.commandQueue()->ExecuteCommandLists(1, &list);
+    }
+
+    // Acquire fence value.
+    m_lastSubmitFenceValue = dev.signalFence();
+
+    // Clean up temporary buffer allocator.
+    m_bufferAllocator.reset(m_lastSubmitFenceValue);
+
+    // Clean up root signatures.
+    m_graphicsRootSignature = nullptr;
+    m_computeRootSignature  = nullptr;
+    m_dynamicViewHeap.reset(m_lastSubmitFenceValue);
+    m_dynamicSamplerHeap.reset(m_lastSubmitFenceValue);
+
+    // Reset command allocator.
+    dev.freeCommandAllocator(m_lastSubmitFenceValue, m_allocator);
+    m_allocator = dev.newCommandAllocator();
+
+    // Reset command list.
+    m_cmdList->Reset(m_allocator, nullptr);
+
+    return m_lastSubmitFenceValue;
+}
+
+auto ink::CommandBuffer::reset() noexcept -> void {
+    m_cmdList->Close();
+    m_bufferAllocator.reset(m_lastSubmitFenceValue);
+
+    // Clean up root signatures.
+    m_graphicsRootSignature = nullptr;
+    m_computeRootSignature  = nullptr;
+    m_dynamicViewHeap.reset(m_lastSubmitFenceValue);
+    m_dynamicSamplerHeap.reset(m_lastSubmitFenceValue);
+
+    if (m_allocator == nullptr) {
+        auto &dev   = RenderDevice::singleton();
+        m_allocator = dev.newCommandAllocator();
+    } else {
+        m_allocator->Reset();
+    }
+
+    m_cmdList->Reset(m_allocator, nullptr);
+}
+
+auto ink::CommandBuffer::waitForComplete() const noexcept -> void {
+    auto &dev = RenderDevice::singleton();
+    dev.sync(m_lastSubmitFenceValue);
+}
+
+auto ink::CommandBuffer::transition(GpuResource &resource, D3D12_RESOURCE_STATES newState) noexcept
+    -> void {
+    if (resource.state() == newState)
+        return;
+
+    D3D12_RESOURCE_BARRIER barriers[2];
+    std::uint32_t          barrierCount = 1U;
+
+    const auto oldState = resource.state();
+
+    barriers[0].Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barriers[0].Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    barriers[0].Transition.pResource   = resource.m_resource.Get();
+    barriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    barriers[0].Transition.StateBefore = oldState;
+    barriers[0].Transition.StateAfter  = newState;
+
+    resource.m_usageState = newState;
+
+    if (newState == D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
+        barriers[1].Type          = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+        barriers[1].Flags         = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+        barriers[1].UAV.pResource = resource.m_resource.Get();
+
+        barrierCount = 2U;
+    }
+
+    m_cmdList->ResourceBarrier(barrierCount, barriers);
+}
+
+auto ink::CommandBuffer::copy(GpuResource &src, GpuResource &dst) noexcept -> void {
+    inkAssert(src.state() & D3D12_RESOURCE_STATE_COPY_SOURCE,
+              u"Source resource must be in D3D12_RESOURCE_STATE_COPY_SOURCE resource state.");
+    inkAssert(dst.state() & D3D12_RESOURCE_STATE_COPY_DEST,
+              u"Destination resource must be in D3D12_RESOURCE_STATE_COPY_DEST resource state.");
+
+    m_cmdList->CopyResource(dst.m_resource.Get(), src.m_resource.Get());
+}
+
+auto ink::CommandBuffer::copyBuffer(GpuResource &src,
+                                    std::size_t  srcOffset,
+                                    GpuResource &dst,
+                                    std::size_t  dstOffset,
+                                    std::size_t  size) noexcept -> void {
+    inkAssert(src.state() & D3D12_RESOURCE_STATE_COPY_SOURCE,
+              u"Source resource must be in D3D12_RESOURCE_STATE_COPY_SOURCE resource state.");
+    inkAssert(dst.state() & D3D12_RESOURCE_STATE_COPY_DEST,
+              u"Destination resource must be in D3D12_RESOURCE_STATE_COPY_DEST resource state.");
+
+    m_cmdList->CopyBufferRegion(dst.m_resource.Get(), dstOffset, src.m_resource.Get(), srcOffset,
+                                size);
+}
+
+auto ink::CommandBuffer::copyBuffer(const void  *src,
+                                    GpuResource &dst,
+                                    std::size_t  dstOffset,
+                                    std::size_t  size) noexcept -> void {
+    inkAssert(dst.state() & D3D12_RESOURCE_STATE_COPY_DEST,
+              u"Destination resource must be in D3D12_RESOURCE_STATE_COPY_DEST resource state.");
+
+    DynamicBufferAllocation allocation(m_bufferAllocator.newUploadBuffer(size));
+    std::memcpy(allocation.data, src, size);
+    m_cmdList->CopyBufferRegion(dst.m_resource.Get(), dstOffset,
+                                allocation.resource->m_resource.Get(), allocation.offset, size);
+}
+
+auto ink::CommandBuffer::copyTexture(const void   *src,
+                                     DXGI_FORMAT   srcFormat,
+                                     std::size_t   srcRowPitch,
+                                     std::uint32_t width,
+                                     std::uint32_t height,
+                                     PixelBuffer  &dst,
+                                     std::uint32_t subresource) noexcept -> void {
+    inkAssert(subresource < dst.mipLevels(), u"The texture does not have mipmap level {}.",
+              subresource);
+    inkAssert(dst.state() & D3D12_RESOURCE_STATE_COPY_DEST,
+              u"Destination resource must be in D3D12_RESOURCE_STATE_COPY_DEST resource state.");
+
+    // Align up row pitch.
+    const std::uint32_t rowPitch  = (std::uint32_t(srcRowPitch) + 0xFF) & ~std::uint32_t(0xFF);
+    const std::size_t   allocSize = (std::size_t(height) * rowPitch + 511) & ~std::size_t(511);
+
+    DynamicBufferAllocation allocation(m_bufferAllocator.newUploadBuffer(allocSize));
+
+    { // Copy data to temporary upload buffer.
+        std::uint8_t       *buffer = static_cast<std::uint8_t *>(allocation.data);
+        const std::uint8_t *srcPtr = static_cast<const std::uint8_t *>(src);
+
+        for (std::uint32_t i = 0; i < height; ++i) {
+            std::memcpy(buffer, srcPtr, srcRowPitch);
+            buffer += rowPitch;
+            srcPtr += srcRowPitch;
+        }
+    }
+
+    // Copy data to texture.
+    D3D12_TEXTURE_COPY_LOCATION srcLoc;
+    srcLoc.pResource                          = allocation.resource->m_resource.Get();
+    srcLoc.Type                               = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    srcLoc.PlacedFootprint.Offset             = allocation.offset;
+    srcLoc.PlacedFootprint.Footprint.Format   = srcFormat;
+    srcLoc.PlacedFootprint.Footprint.Width    = width;
+    srcLoc.PlacedFootprint.Footprint.Height   = height;
+    srcLoc.PlacedFootprint.Footprint.Depth    = 1;
+    srcLoc.PlacedFootprint.Footprint.RowPitch = rowPitch;
+
+    D3D12_TEXTURE_COPY_LOCATION dstLoc;
+    dstLoc.pResource        = dst.m_resource.Get();
+    dstLoc.Type             = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    dstLoc.SubresourceIndex = subresource;
+
+    m_cmdList->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, nullptr);
+}
+
+auto ink::CommandBuffer::setRenderTarget(ColorBuffer &renderTarget) noexcept -> void {
+    inkAssert(renderTarget.state() & D3D12_RESOURCE_STATE_RENDER_TARGET,
+              u"The color buffer is expected to have render target resource state.");
+
+    D3D12_CPU_DESCRIPTOR_HANDLE rtv = renderTarget.renderTargetView();
+    m_cmdList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+}
+
+auto ink::CommandBuffer::setRenderTargets(std::size_t   renderTargetCount,
+                                          ColorBuffer **renderTargets) noexcept -> void {
+    inkAssert(renderTargetCount < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT,
+              u"At most {} render targets are supported.", D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT);
+
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvs[8];
+    for (std::size_t i = 0; i < renderTargetCount; ++i) {
+        inkAssert(renderTargets[i]->state() & D3D12_RESOURCE_STATE_RENDER_TARGET,
+                  u"The color buffer is expected to have render target resource state.");
+        rtvs[i] = renderTargets[i]->renderTargetView();
+    }
+
+    m_cmdList->OMSetRenderTargets(static_cast<UINT>(renderTargetCount), rtvs, FALSE, nullptr);
+}

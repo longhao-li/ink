@@ -337,4 +337,182 @@ private:
     std::vector<void *> m_retiredPages;
 };
 
+class CommandBuffer {
+public:
+    /// @brief
+    ///   Create a new command buffer.
+    /// @note
+    ///   Errors are handled by assertions.
+    InkApi CommandBuffer() noexcept;
+
+    /// @brief
+    ///   Destroy this command buffer.
+    InkApi ~CommandBuffer() noexcept;
+
+    /// @brief
+    ///   Submit this command buffer to start executing on GPU.
+    /// @note
+    ///   This method will automatically reset current command buffer once submitted.
+    InkApi auto submit() noexcept -> std::uint64_t;
+
+    /// @brief
+    ///   Reset this command buffer and clean up all recorded commands.
+    InkApi auto reset() noexcept -> void;
+
+    /// @brief
+    ///   Wait for last submission to be finished on GPU.
+    InkApi auto waitForComplete() const noexcept -> void;
+
+    /// @brief
+    ///   Transition the specified GPU resource to new resource state.
+    ///
+    /// @param[in, out] resource
+    ///   The GPU resource to be transitioned.
+    /// @param newState
+    ///   The new resource state of the GPU resource.
+    InkApi auto transition(GpuResource &resource, D3D12_RESOURCE_STATES newState) noexcept -> void;
+
+    /// @brief
+    ///   Copy all data from @p src to @p dst.
+    ///
+    /// @param[in] src
+    ///   Source resource to be copied from.
+    /// @param[in, out] dst
+    ///   Destination resource to be copied to.
+    InkApi auto copy(GpuResource &src, GpuResource &dst) noexcept -> void;
+
+    /// @brief
+    ///   Copy buffer data from one GPU resource to another one.
+    ///
+    /// @param[in] src
+    ///   Source buffer to be copied from.
+    /// @param srcOffset
+    ///   Offset from start of @p src to start the copy operation.
+    /// @param[in, out] dst
+    ///   Destination buffer to be copied to.
+    /// @param dstOffset
+    ///   Offset from start of @p dest to store the copied data.
+    /// @param size
+    ///   Size in byte of data to be copied.
+    InkApi auto copyBuffer(GpuResource &src,
+                           std::size_t  srcOffset,
+                           GpuResource &dst,
+                           std::size_t  dstOffset,
+                           std::size_t  size) noexcept -> void;
+
+    /// @brief
+    ///   Copy data from system memory to the specified GPU buffer.
+    ///
+    /// @param[in] src
+    ///   Pointer to start of data to be copied.
+    /// @param[in, out] dst
+    ///   The destination buffer to be copied to.
+    /// @param dstOffset
+    ///   Offset from start of @p dest to store the copied data.
+    /// @param size
+    ///   Size in byte of data to be copied.
+    InkApi auto
+    copyBuffer(const void *src, GpuResource &dst, std::size_t dstOffset, std::size_t size) noexcept
+        -> void;
+
+    /// @brief
+    ///   Copy data from system memory to texture.
+    ///
+    /// @param[in] src
+    ///   Source data to be copied from.
+    /// @param srcFormat
+    ///   Format of the source image. Only very limited formats support converting by this method.
+    /// @param srcRowPitch
+    ///   Texture row size in byte of source data.
+    /// @param width
+    ///   Width in pixel of the texture subresource.
+    /// @param height
+    ///   Height in pixel of the texture subresource.
+    /// @param[in, out] dst
+    ///   The texture resource to be copied to.
+    /// @param subresource
+    ///   Subresource index of @p dst to be copied to. Subresource could be considered as mipmap
+    ///   level for 2D textures.
+    InkApi auto copyTexture(const void   *src,
+                            DXGI_FORMAT   srcFormat,
+                            std::size_t   srcRowPitch,
+                            std::uint32_t width,
+                            std::uint32_t height,
+                            PixelBuffer  &dst,
+                            std::uint32_t subresource) noexcept -> void;
+
+    /// @brief
+    ///   Set a single render target for current graphics pipeline without depth buffer.
+    ///
+    /// @param[in] renderTarget
+    ///   The color buffer to be used as render target.
+    InkApi auto setRenderTarget(ColorBuffer &renderTarget) noexcept -> void;
+
+    /// @brief
+    ///   Set a list of render targets for current graphics pipeline without depth buffer.
+    ///
+    /// @param renderTargetCount
+    ///   Number of render targets to be set. This value should not exceed @p
+    ///   D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT.
+    /// @param[in] renderTargets
+    ///   The render targets to be set.
+    InkApi auto setRenderTargets(std::size_t   renderTargetCount,
+                                 ColorBuffer **renderTargets) noexcept -> void;
+
+    /// @brief
+    ///   Clear a color buffer to its clear color.
+    ///
+    /// @param[in, out] colorBuffer
+    ///   The color buffer to be cleared.
+    auto clearColor(ColorBuffer &colorBuffer) noexcept -> void {
+        const Color &color = colorBuffer.clearColor();
+        m_cmdList->ClearRenderTargetView(colorBuffer.renderTargetView(), color.m_arr, 0, nullptr);
+    }
+
+    /// @brief
+    ///   Clear a color buffer to the specified color.
+    ///
+    /// @param[in, out] colorBuffer
+    ///   The color buffer to be cleared.
+    /// @param color
+    ///   Clear color to be used to clear the color buffer.
+    auto clearColor(ColorBuffer &colorBuffer, const Color &color) noexcept -> void {
+        m_cmdList->ClearRenderTargetView(colorBuffer.renderTargetView(), color.m_arr, 0, nullptr);
+    }
+
+private:
+    /// @brief
+    ///   D3D12 direct command list object.
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList4> m_cmdList;
+
+    /// @brief
+    ///   Command allocator for current command list.
+    ID3D12CommandAllocator *m_allocator;
+
+    /// @brief
+    ///   Fence value that indicates when the last submittion of this command buffer will be
+    ///   finished.
+    std::uint64_t m_lastSubmitFenceValue;
+
+    /// @brief
+    ///   Temporary buffer allocator for this command list.
+    DynamicBufferAllocator m_bufferAllocator;
+
+    /// @brief
+    ///   Current graphics root signature.
+    RootSignature *m_graphicsRootSignature;
+
+    /// @brief
+    ///   Current compute root signature.
+    RootSignature *m_computeRootSignature;
+
+    /// @brief
+    ///   Dynamic CBV/SRV/UAV descriptor heap.
+    DynamicDescriptorHeap m_dynamicViewHeap;
+
+    /// @brief
+    ///   Dynamic sampler descriptor heap.
+    DynamicDescriptorHeap m_dynamicSamplerHeap;
+};
+
 } // namespace ink
