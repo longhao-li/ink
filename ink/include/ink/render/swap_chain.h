@@ -7,6 +7,8 @@
 
 namespace ink {
 
+class Window;
+
 class SwapChain {
 public:
     /// @brief
@@ -28,6 +30,25 @@ public:
     /// @param enableTearing
     ///   Specified whether to enable variable refresh rate for this swap chain.
     InkApi SwapChain(HWND          window,
+                     std::uint32_t numBuffers    = 2,
+                     DXGI_FORMAT   bufferFormat  = DXGI_FORMAT_R8G8B8A8_UNORM,
+                     bool          enableTearing = false) noexcept;
+
+    /// @brief
+    ///   Create a new swap chain for the specified window.
+    /// @note
+    ///   Errors are handled with assertions.
+    ///
+    /// @param[in] window
+    ///   The window that this swap chain is created for.
+    /// @param numBuffers
+    ///   Expected number of back buffers of this swap chain. This value will always be clamped
+    ///   between 2 and 3.
+    /// @param bufferFormat
+    ///   Back buffer pixel format.
+    /// @param enableTearing
+    ///   Specified whether to enable variable refresh rate for this swap chain.
+    InkApi SwapChain(Window       &window,
                      std::uint32_t numBuffers    = 2,
                      DXGI_FORMAT   bufferFormat  = DXGI_FORMAT_R8G8B8A8_UNORM,
                      bool          enableTearing = false) noexcept;

@@ -1151,11 +1151,17 @@ auto ink::CommandBuffer::setRenderTarget(ColorBuffer &renderTarget) noexcept -> 
     m_cmdList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
 }
 
+#if !defined(__clang__) && defined(_MSC_VER)
+#    pragma warning(push)
+#    pragma warning(disable : 6001)
+#endif
+
 auto ink::CommandBuffer::setRenderTargets(std::size_t   renderTargetCount,
                                           ColorBuffer **renderTargets) noexcept -> void {
     inkAssert(renderTargetCount < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT,
               u"At most {} render targets are supported.", D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT);
 
+    // It is OK to not initialize the memory.
     D3D12_CPU_DESCRIPTOR_HANDLE rtvs[8];
     for (std::size_t i = 0; i < renderTargetCount; ++i) {
         inkAssert(renderTargets[i]->state() & D3D12_RESOURCE_STATE_RENDER_TARGET,
@@ -1165,3 +1171,7 @@ auto ink::CommandBuffer::setRenderTargets(std::size_t   renderTargetCount,
 
     m_cmdList->OMSetRenderTargets(static_cast<UINT>(renderTargetCount), rtvs, FALSE, nullptr);
 }
+
+#if !defined(__clang__) && defined(_MSC_VER)
+#    pragma warning(pop)
+#endif
