@@ -1,0 +1,69 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="include">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="src">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="include\fmt">
+      <UniqueIdentifier>{7f9afcf0-9cf9-4fd6-8441-ddd61cc0e26d}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\format.cc">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\os.cc">
+      <Filter>src</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\fmt\args.h">
+      <Filter>include\fmt</Filter>
+    </ClInclude>
+    <ClInclude Include="include\fmt\chrono.h">
+      <Filter>include\fmt</Filter>
+    </ClInclude>
+    <ClInclude Include="include\fmt\color.h">
+      <Filter>include\fmt</Filter>
+    </ClInclude>
+    <ClInclude Include="include\fmt\compile.h">
+      <Filter>include\fmt</Filter>
+    </ClInclude>
+    <ClInclude Include="include\fmt\core.h">
+      <Filter>include\fmt</Filter>
+    </ClInclude>
+    <ClInclude Include="include\fmt\format.h">
+      <Filter>include\fmt</Filter>
+    </ClInclude>
+    <ClInclude Include="include\fmt\format-inl.h">
+      <Filter>include\fmt</Filter>
+    </ClInclude>
+    <ClInclude Include="include\fmt\os.h">
+      <Filter>include\fmt</Filter>
+    </ClInclude>
+    <ClInclude Include="include\fmt\ostream.h">
+      <Filter>include\fmt</Filter>
+    </ClInclude>
+    <ClInclude Include="include\fmt\printf.h">
+      <Filter>include\fmt</Filter>
+    </ClInclude>
+    <ClInclude Include="include\fmt\ranges.h">
+      <Filter>include\fmt</Filter>
+    </ClInclude>
+    <ClInclude Include="include\fmt\std.h">
+      <Filter>include\fmt</Filter>
+    </ClInclude>
+    <ClInclude Include="include\fmt\xchar.h">
+      <Filter>include\fmt</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include=".clang-format" />
+    <None Include="LICENSE.rst" />
+  </ItemGroup>
+</Project>

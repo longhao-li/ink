@@ -1,0 +1,114 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="include">
+      <UniqueIdentifier>{39bde236-3beb-41c9-b42d-098fd10d302b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src">
+      <UniqueIdentifier>{2b52fbbe-b424-478a-9669-e5750d866ae1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include\ink">
+      <UniqueIdentifier>{e6412492-e829-4028-9310-21a8d2eab392}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include\ink\core">
+      <UniqueIdentifier>{9cdbe93e-bce1-466e-9f2a-f6ee24c8ffb5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\core">
+      <UniqueIdentifier>{96d08169-325e-48d1-8fbd-7a663fe2f1ba}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include\ink\math">
+      <UniqueIdentifier>{1670ff66-399c-4fe0-b636-35d44c068c96}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include\ink\render">
+      <UniqueIdentifier>{252b46d3-6b58-4a4b-b861-d1719b3faf91}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\render">
+      <UniqueIdentifier>{51c52b3a-d08b-4273-bb4a-29d367c12b9d}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include=".clang-format" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\ink\core\exception.h">
+      <Filter>include\ink\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ink\core\hash.h">
+      <Filter>include\ink\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ink\core\log.h">
+      <Filter>include\ink\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ink\core\string.h">
+      <Filter>include\ink\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ink\core\assert.h">
+      <Filter>include\ink\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ink\render\device.h">
+      <Filter>include\ink\render</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ink\core\window.h">
+      <Filter>include\ink\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ink\render\descriptor.h">
+      <Filter>include\ink\render</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ink\render\resource.h">
+      <Filter>include\ink\render</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ink\math\vector.h">
+      <Filter>include\ink\math</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ink\render\color.h">
+      <Filter>include\ink\render</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ink\render\swap_chain.h">
+      <Filter>include\ink\render</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ink\core\common.h">
+      <Filter>include\ink\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ink\render\pipeline.h">
+      <Filter>include\ink\render</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ink\render\command_buffer.h">
+      <Filter>include\ink\render</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\core\exception.cpp">
+      <Filter>src\core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\hash.cpp">
+      <Filter>src\core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\log.cpp">
+      <Filter>src\core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\string.cpp">
+      <Filter>src\core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\render\device.cpp">
+      <Filter>src\render</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\window.cpp">
+      <Filter>src\core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\render\descriptor.cpp">
+      <Filter>src\render</Filter>
+    </ClCompile>
+    <ClCompile Include="src\render\resource.cpp">
+      <Filter>src\render</Filter>
+    </ClCompile>
+    <ClCompile Include="src\render\swap_chain.cpp">
+      <Filter>src\render</Filter>
+    </ClCompile>
+    <ClCompile Include="src\render\pipeline.cpp">
+      <Filter>src\render</Filter>
+    </ClCompile>
+    <ClCompile Include="src\render\command_buffer.cpp">
+      <Filter>src\render</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>
