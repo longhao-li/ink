@@ -522,4 +522,146 @@ protected:
     UnorderedAccessView m_uav;
 };
 
+class DepthBuffer : public PixelBuffer {
+public:
+    /// @brief
+    ///   Create an empty depth buffer.
+    InkApi DepthBuffer() noexcept;
+
+    /// @brief
+    ///   Create a new depth buffer.
+    /// @note
+    ///   Errors are handled with assertions.
+    ///
+    /// @param width
+    ///   Width in pixel of this depth buffer.
+    /// @param height
+    ///   Height in pixel of this depth buffer.
+    /// @param format
+    ///   Pixel format of this depth buffer.
+    /// @param sampleCount
+    ///   Number of samples per-pixel of this depth buffer.
+    InkApi DepthBuffer(std::uint32_t width,
+                       std::uint32_t height,
+                       DXGI_FORMAT   format,
+                       std::uint32_t sampleCount = 1) noexcept;
+
+    /// @brief
+    ///   Move constructor of depth buffer.
+    ///
+    /// @param other
+    ///   The depth buffer to be moved from. The moved depth buffer will be invalidated.
+    InkApi DepthBuffer(DepthBuffer &&other) noexcept;
+
+    /// @brief
+    ///   Move assignment of depth buffer.
+    ///
+    /// @param other
+    ///   The depth buffer to be moved from. The moved depth buffer will be invalidated.
+    ///
+    /// @return
+    ///   Reference to this depth buffer.
+    InkApi auto operator=(DepthBuffer &&other) noexcept -> DepthBuffer &;
+
+    /// @brief
+    ///   Destroy this depth buffer.
+    InkApi ~DepthBuffer() noexcept override;
+
+    /// @brief
+    ///   Get clear depth value of this depth buffer. Default clear depth value is 1.0f.
+    ///
+    /// @return
+    ///   Clear depth value of this depth buffer.
+    [[nodiscard]]
+    auto clearDepth() const noexcept -> float {
+        return m_clearDepth;
+    }
+
+    /// @brief
+    ///   Set a new clear depth value for this depth buffer.
+    ///
+    /// @param depth
+    ///   New depth to be set.
+    auto clearDepth(float depth) noexcept -> void {
+        m_clearDepth = depth;
+    }
+
+    /// @brief
+    ///   Get clear stencil value of this depth buffer. Default clear stencil value is 0.
+    ///
+    /// @return
+    ///   Clear stencil value of this depth buffer.
+    [[nodiscard]]
+    auto clearStencil() const noexcept -> std::uint8_t {
+        return m_clearStencil;
+    }
+
+    /// @brief
+    ///   Set a new clear stencil value for this depth buffer.
+    ///
+    /// @param stencil
+    ///   New clear stencil value to be set.
+    auto clearStencil(std::uint8_t stencil) noexcept -> void {
+        m_clearStencil = stencil;
+    }
+
+    /// @brief
+    ///   Get depth stencil view CPU descriptor handle of this depth buffer. It is guaranteed that
+    ///   depth buffers always have depth stencil view.
+    ///
+    /// @return
+    ///   CPU descriptor handle to the depth stencil view of this depth buffer.
+    [[nodiscard]]
+    auto depthStencilView() const noexcept -> CpuDescriptorHandle {
+        return m_dsv;
+    }
+
+    /// @brief
+    ///   Get depth read-only depth stencil view CPU descriptor handle of this depth buffer. It is
+    ///   guaranteed that depth buffers always have depth read-only depth stencil view.
+    /// @remark
+    ///   Both depth data and stencil data could be accessed via this depth stencil view, but depth
+    ///   data is read-only.
+    ///
+    /// @return
+    ///   CPU descriptor handle to the depth read-only depth stencil view.
+    [[nodiscard]]
+    auto depthReadOnlyView() const noexcept -> CpuDescriptorHandle {
+        return m_depthReadOnlyView;
+    }
+
+    /// @brief
+    ///   Get depth shader resource view CPU descriptor handle of this depth buffer. Only depth data
+    ///   could be accessed via this shader resource view.
+    ///
+    /// @return
+    ///   Depth shader resource view CPU descriptor handle of this depth buffer.
+    [[nodiscard]]
+    auto depthShaderResourceView() const noexcept -> CpuDescriptorHandle {
+        return m_depthSRV;
+    }
+
+protected:
+    /// @brief
+    ///   Clear depth value of this depth buffer.
+    float m_clearDepth;
+
+    /// @brief
+    ///   Clear stencil value of this depth buffer.
+    std::uint8_t m_clearStencil;
+
+    /// @brief
+    ///   Depth stencil view of this depth buffer.
+    DepthStencilView m_dsv;
+
+    /// @brief
+    ///   Depth read-only depth stencil view.
+    DepthStencilView m_depthReadOnlyView;
+
+    /// @brief
+    ///   Depth only shader resource view. Stencil data cannot be accessed via this shader resource
+    ///   view.
+    ShaderResourceView m_depthSRV;
+};
+
 } // namespace ink

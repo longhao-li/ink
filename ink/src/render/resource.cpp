@@ -405,3 +405,156 @@ auto ink::ColorBuffer::resetSwapChainBuffer(Microsoft::WRL::ComPtr<ID3D12Resourc
 
     m_rtv.initRenderTarget(m_resource.Get(), nullptr);
 }
+
+namespace {
+
+/// @brief
+///   Get depth pixel format from a depth stencil format.
+///
+/// @param format
+///   The depth stencil pixel format.
+///
+/// @return
+///   Depth pixel format from the depth stencil format.
+[[nodiscard]]
+auto getDepthFormat(DXGI_FORMAT format) noexcept -> DXGI_FORMAT {
+    switch (format) {
+    case DXGI_FORMAT_R32G8X24_TYPELESS:
+    case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
+    case DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS:
+    case DXGI_FORMAT_X32_TYPELESS_G8X24_UINT:
+        return DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
+
+    case DXGI_FORMAT_R32_TYPELESS:
+    case DXGI_FORMAT_D32_FLOAT:
+    case DXGI_FORMAT_R32_FLOAT:
+        return DXGI_FORMAT_R32_FLOAT;
+
+    case DXGI_FORMAT_R24G8_TYPELESS:
+    case DXGI_FORMAT_D24_UNORM_S8_UINT:
+    case DXGI_FORMAT_R24_UNORM_X8_TYPELESS:
+    case DXGI_FORMAT_X24_TYPELESS_G8_UINT:
+        return DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+
+    case DXGI_FORMAT_R16_TYPELESS:
+    case DXGI_FORMAT_D16_UNORM:
+    case DXGI_FORMAT_R16_UNORM:
+        return DXGI_FORMAT_R16_UNORM;
+
+    default:
+        return DXGI_FORMAT_UNKNOWN;
+    }
+}
+
+} // namespace
+
+ink::DepthBuffer::DepthBuffer() noexcept
+    : m_clearDepth(1.0f), m_clearStencil(), m_dsv(), m_depthReadOnlyView(), m_depthSRV() {}
+
+ink::DepthBuffer::DepthBuffer(std::uint32_t width,
+                              std::uint32_t height,
+                              DXGI_FORMAT   format,
+                              std::uint32_t sampleCount) noexcept
+    : m_clearDepth(1.0f), m_clearStencil(), m_dsv(), m_depthReadOnlyView(), m_depthSRV() {
+    if (sampleCount == 0)
+        sampleCount = 1;
+
+    this->m_width       = width;
+    this->m_height      = height;
+    this->m_arraySize   = 1;
+    this->m_sampleCount = sampleCount;
+    this->m_mipLevels   = 1;
+    this->m_pixelFormat = format;
+
+    auto &dev = RenderDevice::singleton();
+
+    { // Create ID3D12Resource.
+        [[maybe_unused]] HRESULT hr;
+
+        const D3D12_HEAP_PROPERTIES heapProps{
+            /* Type                 = */ D3D12_HEAP_TYPE_DEFAULT,
+            /* CPUPageProperty      = */ D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+            /* MemoryPoolPreference = */ D3D12_MEMORY_POOL_UNKNOWN,
+            /* CreationNodeMask     = */ 0,
+            /* VisibleNodeMask      = */ 0,
+        };
+
+        const D3D12_RESOURCE_DESC desc{
+            /* Dimension        = */ D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+            /* Alignment        = */ 0,
+            /* Width            = */ width,
+            /* Height           = */ height,
+            /* DepthOrArraySize = */ 1,
+            /* MipLevels        = */ 1,
+            /* Format           = */ format,
+            /* SampleDesc       = */
+            {
+                /* Count   = */ sampleCount,
+                /* Quality = */ 0,
+            },
+            /* Layout = */ D3D12_TEXTURE_LAYOUT_UNKNOWN,
+            /* Flags  = */ D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL,
+        };
+
+        hr =
+            dev.device()->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, state(),
+                                                  nullptr, IID_PPV_ARGS(m_resource.GetAddressOf()));
+        inkAssert(SUCCEEDED(hr), u"Failed to create ID3D12Resource for depth buffer: 0x{:X}.",
+                  static_cast<std::uint32_t>(hr));
+    }
+
+    { // Create depth stencil view.
+        D3D12_DEPTH_STENCIL_VIEW_DESC desc;
+        desc.Format = format;
+        desc.Flags  = D3D12_DSV_FLAG_NONE;
+
+        if (sampleCount > 1) {
+            desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DMS;
+        } else {
+            desc.ViewDimension      = D3D12_DSV_DIMENSION_TEXTURE2D;
+            desc.Texture2D.MipSlice = 0;
+        }
+
+        m_dsv.initDepthStencil(m_resource.Get(), &desc);
+    }
+
+    { // Create depth read-only view.
+        D3D12_DEPTH_STENCIL_VIEW_DESC desc;
+        desc.Format = format;
+        desc.Flags  = D3D12_DSV_FLAG_READ_ONLY_DEPTH;
+
+        if (sampleCount > 1) {
+            desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DMS;
+        } else {
+            desc.ViewDimension      = D3D12_DSV_DIMENSION_TEXTURE2D;
+            desc.Texture2D.MipSlice = 0;
+        }
+
+        m_depthReadOnlyView.initDepthStencil(m_resource.Get(), &desc);
+    }
+
+    const DXGI_FORMAT depthFormat = getDepthFormat(format);
+    if (depthFormat != DXGI_FORMAT_UNKNOWN) {
+        D3D12_SHADER_RESOURCE_VIEW_DESC desc;
+        desc.Format                  = depthFormat;
+        desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+
+        if (sampleCount > 1) {
+            desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DMS;
+        } else {
+            desc.ViewDimension                 = D3D12_SRV_DIMENSION_TEXTURE2D;
+            desc.Texture2D.MostDetailedMip     = 0;
+            desc.Texture2D.MipLevels           = 1;
+            desc.Texture2D.PlaneSlice          = 0;
+            desc.Texture2D.ResourceMinLODClamp = 0.0f;
+        }
+
+        m_depthSRV.initShaderResource(m_resource.Get(), &desc);
+    }
+}
+
+ink::DepthBuffer::DepthBuffer(DepthBuffer &&other) noexcept = default;
+
+auto ink::DepthBuffer::operator=(DepthBuffer &&other) noexcept -> DepthBuffer & = default;
+
+ink::DepthBuffer::~DepthBuffer() noexcept {}
