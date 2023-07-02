@@ -449,13 +449,23 @@ auto getDepthFormat(DXGI_FORMAT format) noexcept -> DXGI_FORMAT {
 } // namespace
 
 ink::DepthBuffer::DepthBuffer() noexcept
-    : m_clearDepth(1.0f), m_clearStencil(), m_dsv(), m_depthReadOnlyView(), m_depthSRV() {}
+    : PixelBuffer(),
+      m_clearDepth(1.0f),
+      m_clearStencil(),
+      m_dsv(),
+      m_depthReadOnlyView(),
+      m_depthSRV() {}
 
 ink::DepthBuffer::DepthBuffer(std::uint32_t width,
                               std::uint32_t height,
                               DXGI_FORMAT   format,
                               std::uint32_t sampleCount) noexcept
-    : m_clearDepth(1.0f), m_clearStencil(), m_dsv(), m_depthReadOnlyView(), m_depthSRV() {
+    : PixelBuffer(),
+      m_clearDepth(1.0f),
+      m_clearStencil(),
+      m_dsv(),
+      m_depthReadOnlyView(),
+      m_depthSRV() {
     if (sampleCount == 0)
         sampleCount = 1;
 
@@ -558,3 +568,96 @@ ink::DepthBuffer::DepthBuffer(DepthBuffer &&other) noexcept = default;
 auto ink::DepthBuffer::operator=(DepthBuffer &&other) noexcept -> DepthBuffer & = default;
 
 ink::DepthBuffer::~DepthBuffer() noexcept {}
+
+ink::Texture2D::Texture2D() noexcept : PixelBuffer(), m_isCube(false), m_srv() {}
+
+ink::Texture2D::Texture2D(std::uint32_t width,
+                          std::uint32_t height,
+                          std::uint32_t arraySize,
+                          DXGI_FORMAT   format,
+                          std::uint32_t mipLevels,
+                          bool          isCube) noexcept
+    : PixelBuffer(), m_isCube(false), m_srv() {
+    // Check cube texture support.
+    isCube   = isCube && (arraySize % 6 == 0);
+    m_isCube = isCube;
+
+    // Maximum mipmap levels.
+    const std::uint32_t maxMips = maxMipLevels(width | height);
+    if (mipLevels == 0 || mipLevels > maxMips)
+        mipLevels = maxMips;
+
+    this->m_width       = width;
+    this->m_height      = height;
+    this->m_arraySize   = arraySize;
+    this->m_sampleCount = 1;
+    this->m_mipLevels   = mipLevels;
+    this->m_pixelFormat = format;
+
+    auto &dev = RenderDevice::singleton();
+
+    { // Create ID3D12Resource.
+        [[maybe_unused]] HRESULT hr;
+
+        const D3D12_HEAP_PROPERTIES heapProps{
+            /* Type                 = */ D3D12_HEAP_TYPE_DEFAULT,
+            /* CPUPageProperty      = */ D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+            /* MemoryPoolPreference = */ D3D12_MEMORY_POOL_UNKNOWN,
+            /* CreationNodeMask     = */ 0,
+            /* VisibleNodeMask      = */ 0,
+        };
+
+        const D3D12_RESOURCE_DESC desc{
+            /* Dimension        = */ D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+            /* Alignment        = */ 0,
+            /* Width            = */ width,
+            /* Height           = */ height,
+            /* DepthOrArraySize = */ static_cast<UINT16>(arraySize),
+            /* MipLevels        = */ static_cast<UINT16>(mipLevels),
+            /* Format           = */ format,
+            /* SampleDesc       = */
+            {
+                /* Count   = */ 1,
+                /* Quality = */ 0,
+            },
+            /* Layout = */ D3D12_TEXTURE_LAYOUT_UNKNOWN,
+            /* Flags  = */ D3D12_RESOURCE_FLAG_NONE,
+        };
+
+        hr =
+            dev.device()->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, state(),
+                                                  nullptr, IID_PPV_ARGS(m_resource.GetAddressOf()));
+        inkAssert(SUCCEEDED(hr), u"Failed to create ID3D12Resource for Texture2D: 0x{:X}.",
+                  static_cast<std::uint32_t>(hr));
+    }
+
+    // Create shader resource view.
+    if (isCube) {
+        D3D12_SHADER_RESOURCE_VIEW_DESC desc;
+        desc.Format                  = format;
+        desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        if (arraySize > 6) {
+            desc.ViewDimension                        = D3D12_SRV_DIMENSION_TEXTURECUBEARRAY;
+            desc.TextureCubeArray.MostDetailedMip     = 0;
+            desc.TextureCubeArray.MipLevels           = mipLevels;
+            desc.TextureCubeArray.First2DArrayFace    = 0;
+            desc.TextureCubeArray.NumCubes            = arraySize / 6;
+            desc.TextureCubeArray.ResourceMinLODClamp = 0.0f;
+        } else {
+            desc.ViewDimension                   = D3D12_SRV_DIMENSION_TEXTURECUBE;
+            desc.TextureCube.MostDetailedMip     = 0;
+            desc.TextureCube.MipLevels           = mipLevels;
+            desc.TextureCube.ResourceMinLODClamp = 0.0f;
+        }
+
+        m_srv.initShaderResource(m_resource.Get(), &desc);
+    } else {
+        m_srv.initShaderResource(m_resource.Get(), nullptr);
+    }
+}
+
+ink::Texture2D::Texture2D(Texture2D &&other) noexcept = default;
+
+auto ink::Texture2D::operator=(Texture2D &&other) noexcept -> Texture2D & = default;
+
+ink::Texture2D::~Texture2D() noexcept {}

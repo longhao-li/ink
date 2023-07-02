@@ -664,4 +664,116 @@ protected:
     ShaderResourceView m_depthSRV;
 };
 
+class Texture2D : public PixelBuffer {
+public:
+    /// @brief
+    ///   Create an empty 2D texture.
+    InkApi Texture2D() noexcept;
+
+    /// @brief
+    ///   Create a new 2D texture (array).
+    /// @note
+    ///   Errors are handled with assertions.
+    ///
+    /// @param width
+    ///   Width in pixel of this 2D texture (array).
+    /// @param height
+    ///   Height in pixel of this 2D texture (array).
+    /// @param arraySize
+    ///   Number of 2D textures in this 2D texture array. Set this value to 1 to create simple 2D
+    ///   textures.
+    /// @param format
+    ///   Pixel format of this 2D texture.
+    /// @param mipLevels
+    ///   Maximum available mipmap level for this 2D texture. Maximum available mipmap levels will
+    ///   be used if this value is greater than maximum available mipmap level. Pass 0 to use
+    ///   maximum available mipmap level. Please notice that mipmap will not be automatically
+    ///   generated when creating this texture.
+    /// @param isCube
+    ///   Specifies whether this should be used as a cube texture (array). This value is used only
+    ///   if @p arraySize is a multiple of 6.
+    InkApi Texture2D(std::uint32_t width,
+                     std::uint32_t height,
+                     std::uint32_t arraySize,
+                     DXGI_FORMAT   format,
+                     std::uint32_t mipLevels,
+                     bool          isCube = false) noexcept;
+
+    /// @brief
+    ///   Create a 2D texture.
+    /// @note
+    ///   Errors are handled with assertions.
+    ///
+    /// @param width
+    ///   Width in pixel of this 2D texture.
+    /// @param height
+    ///   Height in pixel of this 2D texture.
+    /// @param format
+    ///   Pixel format of this 2D texture.
+    /// @param mipLevels
+    ///   Maximum available mipmap level for this 2D texture. Maximum available mipmap levels will
+    ///   be used if this value is greater than maximum available mipmap level. Pass 0 to use
+    ///   maximum available mipmap level. Please notice that mipmap will not be automatically
+    ///   generated when creating this texture.
+    Texture2D(std::uint32_t width,
+              std::uint32_t height,
+              DXGI_FORMAT   format,
+              std::uint32_t mipLevels) noexcept
+        : Texture2D(width, height, 1, format, mipLevels, false) {}
+
+    /// @brief
+    ///   Move constructor of 2D texture.
+    ///
+    /// @param other
+    ///   The 2D texture to be moved. The moved 2D texture will be invalidated.
+    InkApi Texture2D(Texture2D &&other) noexcept;
+
+    /// @brief
+    ///   Move assignment of 2D texture.
+    ///
+    /// @param other
+    ///   The 2D texture to be moved. The moved 2D texture will be invalidated.
+    ///
+    /// @return
+    ///   Reference to this 2D texture.
+    InkApi auto operator=(Texture2D &&other) noexcept -> Texture2D &;
+
+    /// @brief
+    ///   Destroy this 2D texture.
+    InkApi ~Texture2D() noexcept override;
+
+    /// @brief
+    ///   Checks if this is a 2D cube texture.
+    ///
+    /// @return
+    ///   A boolean value that indicates whether this is a 2D cube texture.
+    /// @retval true
+    ///   This is a 2D cube texture.
+    /// @retval false
+    ///   This is not a 2D cube texture.
+    [[nodiscard]]
+    auto isCubeTexture() const noexcept -> bool {
+        return m_isCube;
+    }
+
+    /// @brief
+    ///   Get shader resource view CPU descriptor handle of this 2D texture.
+    ///
+    /// @return
+    ///   Shader resource view CPU descriptor handle of this 2D texture.
+    [[nodiscard]]
+    auto shaderResourceView() const noexcept -> CpuDescriptorHandle {
+        return m_srv;
+    }
+
+protected:
+    /// @brief
+    ///   Specifies whether this is a cube texture.
+    bool m_isCube;
+
+    /// @brief
+    ///   Shader resource view of this texture.
+    ShaderResourceView m_srv;
+};
+
 } // namespace ink
