@@ -1,7 +1,6 @@
 #include "ink/render/command_buffer.h"
 #include "ink/core/assert.h"
 #include "ink/render/device.h"
-#include "ink/render/pipeline.h"
 
 #include <stack>
 
@@ -1151,6 +1150,22 @@ auto ink::CommandBuffer::setRenderTarget(ColorBuffer &renderTarget) noexcept -> 
     m_cmdList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
 }
 
+auto ink::CommandBuffer::setRenderTarget(ColorBuffer &renderTarget,
+                                         DepthBuffer &depthTarget) noexcept -> void {
+    inkAssert(renderTarget.state() & D3D12_RESOURCE_STATE_RENDER_TARGET,
+              u"The color buffer is expected to have render target resource state.");
+    inkAssert(depthTarget.state() &
+                  (D3D12_RESOURCE_STATE_DEPTH_READ | D3D12_RESOURCE_STATE_DEPTH_WRITE),
+              u"The depth buffer is expected to have depth read/write resource state.");
+
+    D3D12_CPU_DESCRIPTOR_HANDLE dsv = (depthTarget.state() & D3D12_RESOURCE_STATE_DEPTH_WRITE)
+                                          ? depthTarget.depthStencilView()
+                                          : depthTarget.depthReadOnlyView();
+    D3D12_CPU_DESCRIPTOR_HANDLE rtv = renderTarget.renderTargetView();
+
+    m_cmdList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
+}
+
 #if !defined(__clang__) && defined(_MSC_VER)
 #    pragma warning(push)
 #    pragma warning(disable : 6001)
@@ -1172,6 +1187,107 @@ auto ink::CommandBuffer::setRenderTargets(std::size_t   renderTargetCount,
     m_cmdList->OMSetRenderTargets(static_cast<UINT>(renderTargetCount), rtvs, FALSE, nullptr);
 }
 
+auto ink::CommandBuffer::setRenderTargets(std::size_t   renderTargetCount,
+                                          ColorBuffer **renderTargets,
+                                          DepthBuffer  &depthTarget) noexcept -> void {
+    inkAssert(renderTargetCount < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT,
+              u"At most {} render targets are supported.", D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT);
+
+    // It is OK to not initialize the memory.
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvs[8];
+    for (std::size_t i = 0; i < renderTargetCount; ++i) {
+        inkAssert(renderTargets[i]->state() & D3D12_RESOURCE_STATE_RENDER_TARGET,
+                  u"The color buffer is expected to have render target resource state.");
+        rtvs[i] = renderTargets[i]->renderTargetView();
+    }
+
+    inkAssert(depthTarget.state() &
+                  (D3D12_RESOURCE_STATE_DEPTH_READ | D3D12_RESOURCE_STATE_DEPTH_WRITE),
+              u"The depth buffer is expected to have depth read/write resource state.");
+
+    D3D12_CPU_DESCRIPTOR_HANDLE dsv = (depthTarget.state() & D3D12_RESOURCE_STATE_DEPTH_WRITE)
+                                          ? depthTarget.depthStencilView()
+                                          : depthTarget.depthReadOnlyView();
+
+    m_cmdList->OMSetRenderTargets(static_cast<UINT>(renderTargetCount), rtvs, FALSE, &dsv);
+}
+
 #if !defined(__clang__) && defined(_MSC_VER)
 #    pragma warning(pop)
 #endif
+
+auto ink::CommandBuffer::setGraphicsRootSignature(RootSignature &rootSig) noexcept -> void {
+    if (m_graphicsRootSignature == &rootSig)
+        return;
+
+    m_graphicsRootSignature = &rootSig;
+    m_dynamicViewHeap.parseGraphicsRootSignature(rootSig);
+    m_dynamicSamplerHeap.parseGraphicsRootSignature(rootSig);
+    m_cmdList->SetGraphicsRootSignature(rootSig.rootSignature());
+}
+
+auto ink::CommandBuffer::setGraphicsConstantBuffer(std::uint32_t rootParam,
+                                                   const void   *data,
+                                                   std::size_t   size) noexcept -> void {
+    DynamicBufferAllocation allocation(m_bufferAllocator.newUploadBuffer(size));
+    std::memcpy(allocation.data, data, size);
+    m_cmdList->SetGraphicsRootConstantBufferView(rootParam, allocation.gpuAddress);
+}
+
+auto ink::CommandBuffer::setGraphicsConstantBuffer(std::uint32_t rootParam,
+                                                   std::uint32_t offset,
+                                                   const void   *data,
+                                                   std::size_t   size) noexcept -> void {
+    DynamicBufferAllocation allocation(m_bufferAllocator.newUploadBuffer(size));
+    std::memcpy(allocation.data, data, size);
+    D3D12_CONSTANT_BUFFER_VIEW_DESC desc{allocation.gpuAddress, static_cast<UINT>(allocation.size)};
+    m_dynamicViewHeap.bindGraphicsDescriptor(rootParam, offset, desc);
+}
+
+auto ink::CommandBuffer::setVertexBuffer(std::uint32_t slot,
+                                         const void   *data,
+                                         std::uint32_t vertexCount,
+                                         std::uint32_t stride) noexcept -> void {
+    const std::size_t       size = std::size_t(vertexCount) * stride;
+    DynamicBufferAllocation allocation(m_bufferAllocator.newUploadBuffer(size));
+    std::memcpy(allocation.data, data, size);
+
+    const D3D12_VERTEX_BUFFER_VIEW vbv{
+        /* BufferLocation = */ allocation.gpuAddress,
+        /* SizeInBytes    = */ static_cast<UINT>(size),
+        /* StrideInBytes  = */ stride,
+    };
+
+    m_cmdList->IASetVertexBuffers(slot, 1, &vbv);
+}
+
+auto ink::CommandBuffer::setIndexBuffer(const void   *data,
+                                        std::uint32_t indexCount,
+                                        bool          isUInt32) noexcept -> void {
+    const std::size_t       size = std::size_t(indexCount) * (isUInt32 ? 4U : 2U);
+    DynamicBufferAllocation allocation(m_bufferAllocator.newUploadBuffer(size));
+    std::memcpy(allocation.data, data, size);
+
+    const D3D12_INDEX_BUFFER_VIEW ibv{
+        /* BufferLocation = */ allocation.gpuAddress,
+        /* SizeInBytes    = */ static_cast<UINT>(size),
+        /* Format         = */ isUInt32 ? DXGI_FORMAT_R32_UINT : DXGI_FORMAT_R16_UINT,
+    };
+
+    m_cmdList->IASetIndexBuffer(&ibv);
+}
+
+auto ink::CommandBuffer::draw(std::uint32_t vertexCount, std::uint32_t firstVertex) noexcept
+    -> void {
+    m_dynamicViewHeap.submitGraphicsDescriptors(m_cmdList.Get());
+    m_dynamicSamplerHeap.submitGraphicsDescriptors(m_cmdList.Get());
+    m_cmdList->DrawInstanced(vertexCount, 1, firstVertex, 0);
+}
+
+auto ink::CommandBuffer::drawIndexed(std::uint32_t indexCount,
+                                     std::uint32_t firstIndex,
+                                     std::uint32_t firstVertex) noexcept -> void {
+    m_dynamicViewHeap.submitGraphicsDescriptors(m_cmdList.Get());
+    m_dynamicSamplerHeap.submitGraphicsDescriptors(m_cmdList.Get());
+    m_cmdList->DrawIndexedInstanced(indexCount, 1, firstIndex, firstVertex, 0);
+}

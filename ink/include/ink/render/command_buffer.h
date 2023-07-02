@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ink/render/pipeline.h"
 #include "ink/render/resource.h"
 
 #include <vector>
@@ -7,7 +8,6 @@
 namespace ink {
 
 class RenderDevice;
-class RootSignature;
 
 class DynamicDescriptorHeap {
 private:
@@ -388,7 +388,7 @@ public:
     ///   Source buffer to be copied from.
     /// @param srcOffset
     ///   Offset from start of @p src to start the copy operation.
-    /// @param[in, out] dst
+    /// @param[in] dst
     ///   Destination buffer to be copied to.
     /// @param dstOffset
     ///   Offset from start of @p dest to store the copied data.
@@ -405,7 +405,7 @@ public:
     ///
     /// @param[in] src
     ///   Pointer to start of data to be copied.
-    /// @param[in, out] dst
+    /// @param[in] dst
     ///   The destination buffer to be copied to.
     /// @param dstOffset
     ///   Offset from start of @p dest to store the copied data.
@@ -428,7 +428,7 @@ public:
     ///   Width in pixel of the texture subresource.
     /// @param height
     ///   Height in pixel of the texture subresource.
-    /// @param[in, out] dst
+    /// @param[in] dst
     ///   The texture resource to be copied to.
     /// @param subresource
     ///   Subresource index of @p dst to be copied to. Subresource could be considered as mipmap
@@ -449,6 +449,17 @@ public:
     InkApi auto setRenderTarget(ColorBuffer &renderTarget) noexcept -> void;
 
     /// @brief
+    ///   Set a single render target with a depth buffer for current graphics pipeline.
+    ///
+    /// @param[in] renderTarget
+    ///   The color buffer to be used as render target.
+    /// @param[in] depthTarget
+    ///   The depth buffer to be used as depth target. The depth read-only view will be used if @p
+    ///   D3D12_RESOURCE_STATE_DEPTH_WRITE state is not set for the depth buffer.
+    InkApi auto setRenderTarget(ColorBuffer &renderTarget, DepthBuffer &depthTarget) noexcept
+        -> void;
+
+    /// @brief
     ///   Set a list of render targets for current graphics pipeline without depth buffer.
     ///
     /// @param renderTargetCount
@@ -460,9 +471,24 @@ public:
                                  ColorBuffer **renderTargets) noexcept -> void;
 
     /// @brief
+    ///   Set a list of render targets for current graphics pipeline.
+    ///
+    /// @param renderTargetCount
+    ///   Number of render targets to be set. This value should not exceed @p
+    ///   D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT.
+    /// @param[in] renderTargets
+    ///   The render targets to be set.
+    /// @param[in] depthTarget
+    ///   The depth buffer to be used as depth target. The depth read-only view will be used if @p
+    ///   D3D12_RESOURCE_STATE_DEPTH_WRITE state is not set for the depth buffer.
+    InkApi auto setRenderTargets(std::size_t   renderTargetCount,
+                                 ColorBuffer **renderTargets,
+                                 DepthBuffer  &depthTarget) noexcept -> void;
+
+    /// @brief
     ///   Clear a color buffer to its clear color.
     ///
-    /// @param[in, out] colorBuffer
+    /// @param[in] colorBuffer
     ///   The color buffer to be cleared.
     auto clearColor(ColorBuffer &colorBuffer) noexcept -> void {
         const Color &color = colorBuffer.clearColor();
@@ -472,13 +498,451 @@ public:
     /// @brief
     ///   Clear a color buffer to the specified color.
     ///
-    /// @param[in, out] colorBuffer
+    /// @param[in] colorBuffer
     ///   The color buffer to be cleared.
     /// @param color
     ///   Clear color to be used to clear the color buffer.
     auto clearColor(ColorBuffer &colorBuffer, const Color &color) noexcept -> void {
         m_cmdList->ClearRenderTargetView(colorBuffer.renderTargetView(), color.m_arr, 0, nullptr);
     }
+
+    /// @brief
+    ///   Clear depth value for the specified depth buffer. Stencil values will not be modified by
+    ///   this method.
+    ///
+    /// @param[in] depthBuffer
+    ///   The depth buffer to be cleared.
+    auto clearDepth(DepthBuffer &depthBuffer) noexcept -> void {
+        m_cmdList->ClearDepthStencilView(depthBuffer.depthStencilView(), D3D12_CLEAR_FLAG_DEPTH,
+                                         depthBuffer.clearDepth(), 0, 0, nullptr);
+    }
+
+    /// @brief
+    ///   Clear depth value for the specified depth buffer. Stencil values will not be modified by
+    ///   this method.
+    ///
+    /// @param[in] depthBuffer
+    ///   The depth buffer to be cleared.
+    /// @param depth
+    ///   The depth value to be used to clear the depth buffer.
+    auto clearDepth(DepthBuffer &depthBuffer, float depth) noexcept -> void {
+        m_cmdList->ClearDepthStencilView(depthBuffer.depthStencilView(), D3D12_CLEAR_FLAG_DEPTH,
+                                         depth, 0, 0, nullptr);
+    }
+
+    /// @brief
+    ///   Clear stencil value for the specified depth buffer. Depth values will not be modified by
+    ///   this method.
+    ///
+    /// @param[in] depthBuffer
+    ///   The depth buffer to be cleared.
+    auto clearStencil(DepthBuffer &depthBuffer) noexcept -> void {
+        m_cmdList->ClearDepthStencilView(depthBuffer.depthStencilView(), D3D12_CLEAR_FLAG_STENCIL,
+                                         0, depthBuffer.clearStencil(), 0, nullptr);
+    }
+
+    /// @brief
+    ///   Clear stencil value for the specified depth buffer. Depth values will not be modified by
+    ///   this method.
+    ///
+    /// @param[in] depthBuffer
+    ///   The depth buffer to be cleared.
+    /// @param stencil
+    ///   The stencil value to be used to clear this depth buffer.
+    auto clearStencil(DepthBuffer &depthBuffer, std::uint8_t stencil) noexcept -> void {
+        m_cmdList->ClearDepthStencilView(depthBuffer.depthStencilView(), D3D12_CLEAR_FLAG_STENCIL,
+                                         0, stencil, 0, nullptr);
+    }
+
+    /// @brief
+    ///   Clear depth and stencil value for the specified depth buffer.
+    ///
+    /// @param[in] depthBuffer
+    ///   The depth buffer to be cleared.
+    auto clearDepthStencil(DepthBuffer &depthBuffer) noexcept -> void {
+        m_cmdList->ClearDepthStencilView(
+            depthBuffer.depthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
+            depthBuffer.clearDepth(), depthBuffer.clearStencil(), 0, nullptr);
+    }
+
+    /// @brief
+    ///   Clear depth and stencil value for the specified depth buffer.
+    ///
+    /// @param[in] depthBuffer
+    ///   The depth buffer to be cleared.
+    /// @param depth
+    ///   The depth value to be used to clear the depth buffer.
+    /// @param stencil
+    ///   The stencil value to be used to clear this depth buffer.
+    auto clearDepthStencil(DepthBuffer &depthBuffer, float depth, std::uint8_t stencil) noexcept
+        -> void {
+        m_cmdList->ClearDepthStencilView(depthBuffer.depthStencilView(),
+                                         D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, depth,
+                                         stencil, 0, nullptr);
+    }
+
+    /// @brief
+    ///   Set graphics root signature for current command buffer.
+    ///
+    /// @param[in] rootSig
+    ///   The root signature to be set for graphics pipeline.
+    InkApi auto setGraphicsRootSignature(RootSignature &rootSig) noexcept -> void;
+
+    /// @brief
+    ///   Bind a CBV/SRV/UAV to the specified descriptor table.
+    ///
+    /// @param rootParam
+    ///   Root parameter index of the CBV/SRV/UAV descriptor table.
+    /// @param offset
+    ///   Offset from start of the root descriptor table to set the descriptor handle.
+    /// @param handle
+    ///   The CBV/SRV/UAV descriptor handle to be set.
+    auto setGraphicsView(std::uint32_t       rootParam,
+                         std::uint32_t       offset,
+                         CpuDescriptorHandle handle) noexcept -> void {
+        m_dynamicViewHeap.bindGraphicsDescriptor(rootParam, offset, handle);
+    }
+
+    /// @brief
+    ///   Bind a sampler to the specified descriptor table.
+    ///
+    /// @param rootParam
+    ///   Root parameter index of the sampler descriptor table.
+    /// @param offset
+    ///   Offset from start of the root descriptor table to set the descriptor handle.
+    /// @param handle
+    ///   The sampler descriptor handle to be set.
+    auto setGraphicsSampler(std::uint32_t       rootParam,
+                            std::uint32_t       offset,
+                            CpuDescriptorHandle handle) noexcept -> void {
+        m_dynamicViewHeap.bindGraphicsDescriptor(rootParam, offset, handle);
+    }
+
+    /// @brief
+    ///   Set a graphics root constant.
+    ///
+    /// @tparam T
+    ///   Type of the constant value to be set.
+    ///
+    /// @param rootParam
+    ///   Index of the root constant parameter to be set.
+    /// @param offset
+    ///   The offset, in 32-bit values, to set the constant in the root signature.
+    /// @param value
+    ///   The 32-bit constant value to be set.
+    template <typename T>
+    auto setGraphicsConstant(std::uint32_t rootParam, std::uint32_t offset, const T &value) noexcept
+        -> void {
+        static_assert(sizeof(T) == sizeof(std::uint32_t),
+                      "Element must be actually 4 bytes in size.");
+        static_assert(std::is_trivially_copyable<T>::value, "Element must be trivially copyable.");
+
+        m_cmdList->SetGraphicsRoot32BitConstant(
+            rootParam, *reinterpret_cast<const UINT *>(std::addressof(value)), offset);
+    }
+
+    /// @brief
+    ///   Set graphics root constant based on the specified offset.
+    ///
+    /// @tparam T
+    ///   Type of the first root constant value to be set.
+    /// @tparam ...Others
+    ///   Type of the rest of root constant values to be set.
+    ///
+    /// @param rootParam
+    ///   Index of the root constant parameter to be set.
+    /// @param baseOffset
+    ///   Base offset of the first 32-bit root constant value.
+    /// @param value
+    ///   The first 32-bit constant value to be set.
+    /// @param ...others
+    ///   The rest of 32-bit constant values to be set.
+    template <typename T, typename... Others>
+    auto setGraphicsConstant(std::uint32_t rootParam,
+                             std::uint32_t baseOffset,
+                             const T      &value,
+                             const Others &...others) noexcept -> void {
+        static_assert(sizeof(T) == sizeof(std::uint32_t),
+                      "Elements must be actually 4 bytes in size.");
+        static_assert(std::is_trivially_copyable<T>::value, "Elements must be trivially copyable.");
+
+        this->setGraphicsConstant(rootParam, baseOffset, value);
+        this->setGraphicsConstant(rootParam, baseOffset + 1, others...);
+    }
+
+    /// @brief
+    ///   Copy data from system memory and set a constant buffer view at the specified root
+    ///   parameter.
+    ///
+    /// @param rootParam
+    ///   Index of the root parameter to set the constant buffer view.
+    /// @param data
+    ///   Start of data to be copied.
+    /// @param size
+    ///   Size in byte of data to be used as constant buffer.
+    InkApi auto setGraphicsConstantBuffer(std::uint32_t rootParam,
+                                          const void   *data,
+                                          std::size_t   size) noexcept -> void;
+
+    /// @brief
+    ///   Copy data from system memory and set a constant buffer view for the specified root
+    ///   descriptor table.
+    ///
+    /// @param rootParam
+    ///   Index of the root descriptor table to set the constant buffer view.
+    /// @param offset
+    ///   Offset from start of the root descriptor table to set the constant buffer view.
+    /// @param data
+    ///   Start of data to be copied.
+    /// @param size
+    ///   Size in byte of data to be used as constant buffer.
+    InkApi auto setGraphicsConstantBuffer(std::uint32_t rootParam,
+                                          std::uint32_t offset,
+                                          const void   *data,
+                                          std::size_t   size) noexcept -> void;
+
+    /// @brief
+    ///   Set a vertex buffer to the specified slot.
+    ///
+    /// @param slot
+    ///   Slot index to set the vertex buffer.
+    /// @param gpuAddress
+    ///   GPU address to start of the vertex buffer.
+    /// @param vertexCount
+    ///   Number of vertices to be set.
+    /// @param stride
+    ///   Stride size in byte of each vertex data element.
+    auto setVertexBuffer(std::uint32_t slot,
+                         std::uint64_t gpuAddress,
+                         std::uint32_t vertexCount,
+                         std::uint32_t stride) noexcept -> void {
+        const D3D12_VERTEX_BUFFER_VIEW vbv{
+            /* BufferLocation = */ gpuAddress,
+            /* SizeInBytes    = */ vertexCount * stride,
+            /* StrideInBytes  = */ stride,
+        };
+
+        m_cmdList->IASetVertexBuffers(slot, 1, &vbv);
+    }
+
+    /// @brief
+    ///   Use a structured buffer as vertex buffer.
+    ///
+    /// @param slot
+    ///   Slot index to set the vertex buffer.
+    /// @param buffer
+    ///   The structured buffer to be used as vertex buffer.
+    auto setVertexBuffer(std::uint32_t slot, const StructuredBuffer &buffer) noexcept -> void {
+        const D3D12_VERTEX_BUFFER_VIEW vbv{
+            /* BufferLocation = */ buffer.gpuAddress(),
+            /* SizeInBytes    = */ buffer.elementSize() * buffer.elementCount(),
+            /* StrideInBytes  = */ buffer.elementSize(),
+        };
+
+        m_cmdList->IASetVertexBuffers(slot, 1, &vbv);
+    }
+
+    /// @brief
+    ///   Use a temporary upload buffer as vertex buffer.
+    /// @note
+    ///   It is slow to upload vertex data to GPU per-frame. Please consider using static vertex
+    ///   buffer if possible.
+    ///
+    /// @param slot
+    ///   Slot index to set the vertex buffer.
+    /// @param data
+    ///   Pointer to start of the vertex data.
+    /// @param vertexCount
+    ///   Number of vertices in this vertex buffer.
+    /// @param stride
+    ///   Stride size in byte of each vertex element.
+    InkApi auto setVertexBuffer(std::uint32_t slot,
+                                const void   *data,
+                                std::uint32_t vertexCount,
+                                std::uint32_t stride) noexcept -> void;
+
+    /// @brief
+    ///   Set index buffer for current graphics pipeline.
+    ///
+    /// @param gpuAddress
+    ///   GPU address to start of the index buffer.
+    /// @param indexCount
+    ///   Number of indices to be set.
+    /// @param isUInt32
+    ///   Specifies whether the indices are uint32 or uint16.
+    auto setIndexBuffer(std::uint64_t gpuAddress, std::uint32_t indexCount, bool isUInt32) noexcept
+        -> void {
+        const DXGI_FORMAT format = isUInt32 ? DXGI_FORMAT_R32_UINT : DXGI_FORMAT_R16_UINT;
+        const D3D12_INDEX_BUFFER_VIEW ibv{
+            /* BufferLocation = */ gpuAddress,
+            /* SizeInBytes    = */ indexCount * (isUInt32 ? 4U : 2U),
+            /* Format         = */ format,
+        };
+
+        m_cmdList->IASetIndexBuffer(&ibv);
+    }
+
+    /// @brief
+    ///   Use a structured buffer as index buffer.
+    /// @note
+    ///   Only uint16 and uint32 formats could be used as index buffer indices. Index type is
+    ///   determined by structured buffer element size.
+    ///
+    /// @param buffer
+    ///   The structured buffer to be used as index buffer.
+    auto setIndexBuffer(const StructuredBuffer &buffer) noexcept -> void {
+        const DXGI_FORMAT format =
+            buffer.elementSize() == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
+        const D3D12_INDEX_BUFFER_VIEW ibv{
+            /* BufferLocation = */ buffer.gpuAddress(),
+            /* SizeInBytes    = */ buffer.elementSize() * buffer.elementCount(),
+            /* Format         = */ format,
+        };
+
+        m_cmdList->IASetIndexBuffer(&ibv);
+    }
+
+    /// @brief
+    ///   Use a temporary upload buffer as index buffer.
+    /// @note
+    ///   It is slow to upload index data to GPU per-frame. Please consider using static index
+    ///   buffer if possible.
+    ///
+    /// @param data
+    ///   Pointer to start of the index data.
+    /// @param indexCount
+    ///   Number of indices in the index buffer.
+    /// @param isUInt32
+    ///   Specifies whether the index format is uint32 or uint16.
+    InkApi auto setIndexBuffer(const void *data, std::uint32_t indexCount, bool isUInt32) noexcept
+        -> void;
+
+    /// @brief
+    ///   Set pipeline state for this command buffer.
+    /// @note
+    ///   Root signature will not be affected by this method. Root signature must be set manually.
+    ///
+    /// @param pso
+    ///   The pipeline state to be set.
+    auto setPipelineState(const PipelineState &pso) noexcept -> void {
+        m_cmdList->SetPipelineState(pso.pipelineState());
+    }
+
+    /// @brief
+    ///   Set primitive topology for current graphics pipeline.
+    ///
+    /// @param topology
+    ///   Primitive topology for current graphics pipeline.
+    auto setPrimitiveTopology(D3D12_PRIMITIVE_TOPOLOGY topology) noexcept -> void {
+        m_cmdList->IASetPrimitiveTopology(topology);
+    }
+
+    /// @brief
+    ///   Set viewport for current graphics pipeline.
+    /// @remark
+    ///   D3D12 screen coordinate starts from top-left corner of screen.
+    ///
+    /// @tparam T0
+    ///   Type of x to be set for this viewport.
+    /// @tparam T1
+    ///   Type of y to be set for this viewport.
+    /// @tparam T2
+    ///   Type of width to be set for this viewport.
+    /// @tparam T3
+    ///   Type of height to be set for this viewport.
+    ///
+    /// @param x
+    ///   X coordinate from top-left corner of this viewport.
+    /// @param y
+    ///   Y coordinate from top-left corner of this viewport.
+    /// @param width
+    ///   Width of this viewport.
+    /// @param height
+    ///   Height of this viewport.
+    /// @param zNear
+    ///   Minimum depth of this viewport. Default value is 0.
+    /// @param zFar
+    ///   Maximum depth of this viewport. Default value is 1.
+    template <typename T0, typename T1, typename T2, typename T3>
+    auto setViewport(T0 x, T1 y, T2 width, T3 height, float zNear = 0, float zFar = 1.f) noexcept
+        -> void {
+        static_assert(std::is_arithmetic<T0>::value, "X must be arithmetic type.");
+        static_assert(std::is_arithmetic<T1>::value, "Y must be arithmetic type.");
+        static_assert(std::is_arithmetic<T2>::value, "Width must be arithmetic type.");
+        static_assert(std::is_arithmetic<T3>::value, "Height must be arithmetic type.");
+
+        const D3D12_VIEWPORT viewport{
+            /* TopLeftX = */ static_cast<float>(x),
+            /* TopLeftY = */ static_cast<float>(y),
+            /* Width    = */ static_cast<float>(width),
+            /* Height   = */ static_cast<float>(height),
+            /* MinDepth = */ zNear,
+            /* MaxDepth = */ zFar,
+        };
+
+        m_cmdList->RSSetViewports(1, &viewport);
+    }
+
+    /// @brief
+    ///   Set scissor rectangle for this graphics pipeline.
+    /// @remark
+    ///   D3D12 screen coordinate starts from top-left corner of screen.
+    ///
+    /// @tparam T0
+    ///   Type of x to be set for this viewport.
+    /// @tparam T1
+    ///   Type of y to be set for this viewport.
+    /// @tparam T2
+    ///   Type of width to be set for this viewport.
+    /// @tparam T3
+    ///   Type of height to be set for this viewport.
+    ///
+    /// @param x
+    ///   X coordinate from top-left corner of this viewport.
+    /// @param y
+    ///   Y coordinate from top-left corner of this viewport.
+    /// @param width
+    ///   Width of this viewport.
+    /// @param height
+    ///   Height of this viewport.
+    template <typename T0, typename T1, typename T2, typename T3>
+    auto setScissorRect(T0 x, T1 y, T2 width, T3 height) noexcept -> void {
+        static_assert(std::is_arithmetic<T0>::value, "X must be arithmetic type.");
+        static_assert(std::is_arithmetic<T1>::value, "Y must be arithmetic type.");
+        static_assert(std::is_arithmetic<T2>::value, "Width must be arithmetic type.");
+        static_assert(std::is_arithmetic<T3>::value, "Height must be arithmetic type.");
+
+        const D3D12_RECT rect{
+            /* left   = */ static_cast<LONG>(x),
+            /* top    = */ static_cast<LONG>(y),
+            /* right  = */ static_cast<LONG>(x + width),
+            /* bottom = */ static_cast<LONG>(y + height),
+        };
+
+        m_cmdList->RSSetScissorRects(1, &rect);
+    }
+
+    /// @brief
+    ///   Draw primitives.
+    ///
+    /// @param vertexCount
+    ///   Number of vertices to be drawn.
+    /// @param firstVertex
+    ///   Index of the first vertex to be drawn.
+    InkApi auto draw(std::uint32_t vertexCount, std::uint32_t firstVertex = 0) noexcept -> void;
+
+    /// @brief
+    ///   Draw primitives according to index buffer.
+    ///
+    /// @param indexCount
+    ///   Number of indices to be used.
+    /// @param firstIndex
+    ///   Index of the first index to be used in index buffer.
+    /// @param firstVertex
+    ///   Index of the first vertex in vertex buffer to be drawn.
+    InkApi auto drawIndexed(std::uint32_t indexCount,
+                            std::uint32_t firstIndex,
+                            std::uint32_t firstVertex = 0) noexcept -> void;
 
 private:
     /// @brief
