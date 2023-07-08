@@ -25,6 +25,12 @@
     <Filter Include="src\render">
       <UniqueIdentifier>{51c52b3a-d08b-4273-bb4a-29d367c12b9d}</UniqueIdentifier>
     </Filter>
+    <Filter Include="include\ink\asset">
+      <UniqueIdentifier>{2de8bd57-9b20-4e21-a860-5f4979625dc0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\asset">
+      <UniqueIdentifier>{93dfab22-5169-4e0a-89eb-b180240cd77c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <None Include=".clang-format" />
@@ -75,6 +81,9 @@
     <ClInclude Include="include\ink\render\command_buffer.h">
       <Filter>include\ink\render</Filter>
     </ClInclude>
+    <ClInclude Include="include\ink\asset\image.h">
+      <Filter>include\ink\asset</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\core\exception.cpp">
@@ -109,6 +118,9 @@
     </ClCompile>
     <ClCompile Include="src\render\command_buffer.cpp">
       <Filter>src\render</Filter>
+    </ClCompile>
+    <ClCompile Include="src\asset\image.cpp">
+      <Filter>src\asset</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

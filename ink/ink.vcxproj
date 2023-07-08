@@ -159,6 +159,7 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\ink\asset\image.h" />
     <ClInclude Include="include\ink\core\assert.h" />
     <ClInclude Include="include\ink\core\common.h" />
     <ClInclude Include="include\ink\core\exception.h" />
@@ -176,6 +177,7 @@
     <ClInclude Include="include\ink\render\swap_chain.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\asset\image.cpp" />
     <ClCompile Include="src\core\exception.cpp" />
     <ClCompile Include="src\core\hash.cpp" />
     <ClCompile Include="src\core\log.cpp" />
