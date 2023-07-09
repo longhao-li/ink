@@ -1058,6 +1058,14 @@ auto ink::CommandBuffer::transition(GpuResource &resource, D3D12_RESOURCE_STATES
     m_cmdList->ResourceBarrier(barrierCount, barriers);
 }
 
+auto ink::CommandBuffer::unorderedAccessBarrier(GpuResource &resource) noexcept -> void {
+    D3D12_RESOURCE_BARRIER barrier;
+    barrier.Type          = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    barrier.Flags         = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    barrier.UAV.pResource = resource.m_resource.Get();
+    m_cmdList->ResourceBarrier(1, &barrier);
+}
+
 auto ink::CommandBuffer::copy(GpuResource &src, GpuResource &dst) noexcept -> void {
     inkAssert(src.state() & D3D12_RESOURCE_STATE_COPY_SOURCE,
               u"Source resource must be in D3D12_RESOURCE_STATE_COPY_SOURCE resource state.");
@@ -1290,4 +1298,13 @@ auto ink::CommandBuffer::drawIndexed(std::uint32_t indexCount,
     m_dynamicViewHeap.submitGraphicsDescriptors(m_cmdList.Get());
     m_dynamicSamplerHeap.submitGraphicsDescriptors(m_cmdList.Get());
     m_cmdList->DrawIndexedInstanced(indexCount, 1, firstIndex, firstVertex, 0);
+}
+
+auto ink::CommandBuffer::dispatch(std::size_t groupX,
+                                  std::size_t groupY,
+                                  std::size_t groupZ) noexcept -> void {
+    m_dynamicViewHeap.submitComputeDescriptors(m_cmdList.Get());
+    m_dynamicSamplerHeap.submitComputeDescriptors(m_cmdList.Get());
+    m_cmdList->Dispatch(static_cast<UINT>(groupX), static_cast<UINT>(groupY),
+                        static_cast<UINT>(groupZ));
 }

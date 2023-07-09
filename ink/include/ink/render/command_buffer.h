@@ -373,6 +373,13 @@ public:
     InkApi auto transition(GpuResource &resource, D3D12_RESOURCE_STATES newState) noexcept -> void;
 
     /// @brief
+    ///   Insert a UAV resource barrier.
+    ///
+    /// @param[in] resource
+    ///   The resource that this barrier is inserted for.
+    InkApi auto unorderedAccessBarrier(GpuResource &resource) noexcept -> void;
+
+    /// @brief
     ///   Copy all data from @p src to @p dst.
     ///
     /// @param[in] src
@@ -923,6 +930,15 @@ public:
     }
 
     /// @brief
+    ///   Set color blend factors for current graphics pipeline.
+    ///
+    /// @param factor
+    ///   Blend factors for each color options.
+    auto setBlendFactor(Color factor) noexcept -> void {
+        m_cmdList->OMSetBlendFactor(factor.m_arr);
+    }
+
+    /// @brief
     ///   Draw primitives.
     ///
     /// @param vertexCount
@@ -943,6 +959,18 @@ public:
     InkApi auto drawIndexed(std::uint32_t indexCount,
                             std::uint32_t firstIndex,
                             std::uint32_t firstVertex = 0) noexcept -> void;
+
+    /// @brief
+    ///   Dispatch tasks to compute pipeline.
+    ///
+    /// @param groupX
+    ///   Number of thread groups for x dimension.
+    /// @param groupY
+    ///   Number of thread groups for y dimension.
+    /// @param groupZ
+    ///   Number of thread groups for z dimension.
+    InkApi auto dispatch(std::size_t groupX, std::size_t groupY, std::size_t groupZ) noexcept
+        -> void;
 
 private:
     /// @brief
