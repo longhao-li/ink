@@ -208,12 +208,20 @@ constexpr auto operator+(Vector2 lhs, float rhs) noexcept -> Vector2 {
     return Vector2(lhs.x + rhs, lhs.y + rhs);
 }
 
+constexpr auto operator+(float lhs, Vector2 rhs) noexcept -> Vector2 {
+    return Vector2(lhs + rhs.x, lhs + rhs.y);
+}
+
 constexpr auto operator-(Vector2 lhs, Vector2 rhs) noexcept -> Vector2 {
     return Vector2(lhs.x - rhs.x, lhs.y - rhs.y);
 }
 
 constexpr auto operator-(Vector2 lhs, float rhs) noexcept -> Vector2 {
     return Vector2(lhs.x - rhs, lhs.y - rhs);
+}
+
+constexpr auto operator-(float lhs, Vector2 rhs) noexcept -> Vector2 {
+    return Vector2(lhs - rhs.x, lhs - rhs.y);
 }
 
 constexpr auto operator*(Vector2 lhs, Vector2 rhs) noexcept -> Vector2 {
@@ -234,6 +242,10 @@ constexpr auto operator/(Vector2 lhs, Vector2 rhs) noexcept -> Vector2 {
 
 constexpr auto operator/(Vector2 lhs, float rhs) noexcept -> Vector2 {
     return Vector2(lhs.x / rhs, lhs.y / rhs);
+}
+
+constexpr auto operator/(float lhs, Vector2 rhs) noexcept -> Vector2 {
+    return Vector2(lhs / rhs.x, lhs / rhs.y);
 }
 
 /// @brief
@@ -580,6 +592,10 @@ constexpr auto operator-(Vector3 lhs, float rhs) noexcept -> Vector3 {
     return Vector3(lhs.x - rhs, lhs.y - rhs, lhs.z - rhs);
 }
 
+constexpr auto operator-(float lhs, Vector3 rhs) noexcept -> Vector3 {
+    return Vector3(lhs - rhs.x, lhs - rhs.y, lhs - rhs.z);
+}
+
 constexpr auto operator*(Vector3 lhs, Vector3 rhs) noexcept -> Vector3 {
     return Vector3(lhs.x * rhs.x, lhs.y * rhs.y, lhs.z * rhs.z);
 }
@@ -598,6 +614,10 @@ constexpr auto operator/(Vector3 lhs, Vector3 rhs) noexcept -> Vector3 {
 
 constexpr auto operator/(Vector3 lhs, float rhs) noexcept -> Vector3 {
     return Vector3(lhs.x / rhs, lhs.y / rhs, lhs.z / rhs);
+}
+
+constexpr auto operator/(float lhs, Vector3 rhs) noexcept -> Vector3 {
+    return Vector3(lhs / rhs.x, lhs / rhs.y, lhs / rhs.z);
 }
 
 /// @brief
@@ -1021,6 +1041,10 @@ constexpr auto operator-(Vector4 lhs, float rhs) noexcept -> Vector4 {
     return Vector4(lhs.x - rhs, lhs.y - rhs, lhs.z - rhs, lhs.w - rhs);
 }
 
+constexpr auto operator-(float lhs, Vector4 rhs) noexcept -> Vector4 {
+    return Vector4(lhs - rhs.x, lhs - rhs.y, lhs - rhs.z, lhs - rhs.w);
+}
+
 constexpr auto operator*(Vector4 lhs, Vector4 rhs) noexcept -> Vector4 {
     return Vector4(lhs.x * rhs.x, lhs.y * rhs.y, lhs.z * rhs.z, lhs.w * rhs.w);
 }
@@ -1039,6 +1063,10 @@ constexpr auto operator/(Vector4 lhs, Vector4 rhs) noexcept -> Vector4 {
 
 constexpr auto operator/(Vector4 lhs, float rhs) noexcept -> Vector4 {
     return Vector4(lhs.x / rhs, lhs.y / rhs, lhs.z / rhs, lhs.w / rhs);
+}
+
+constexpr auto operator/(float lhs, Vector4 rhs) noexcept -> Vector4 {
+    return Vector4(lhs / rhs.x, lhs / rhs.y, lhs / rhs.z, lhs / rhs.w);
 }
 
 /// @brief
