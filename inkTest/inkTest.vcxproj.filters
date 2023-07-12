@@ -9,6 +9,9 @@
     <ClCompile Include="math\vector.cpp">
       <Filter>math</Filter>
     </ClCompile>
+    <ClCompile Include="math\matrix2.cpp">
+      <Filter>math</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include=".clang-format" />

@@ -127,10 +127,13 @@ struct Matrix2 {
         const float det    = this->determinant();
         const float invDet = 1.0f / det;
 
-        column[0][0] *= invDet;
+        const float v00 = column[1][1] * invDet;
+        const float v11 = column[0][0] * invDet;
+
         column[0][1] *= -invDet;
         column[1][0] *= -invDet;
-        column[1][1] *= invDet;
+        column[0][0] = v00;
+        column[1][1] = v11;
 
         return *this;
     }
@@ -147,8 +150,8 @@ struct Matrix2 {
         const float det    = this->determinant();
         const float invDet = 1.0f / det;
 
-        return Matrix2(column[0][0] * invDet, column[0][1] * -invDet, column[1][0] * -invDet,
-                       column[1][1] * invDet);
+        return Matrix2(column[1][1] * invDet, column[0][1] * -invDet, column[1][0] * -invDet,
+                       column[0][0] * invDet);
     }
 
     constexpr auto operator+() const noexcept -> Matrix2 {

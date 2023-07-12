@@ -142,6 +142,7 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="math\matrix2.cpp" />
     <ClCompile Include="math\vector.cpp" />
   </ItemGroup>
   <ItemGroup>
