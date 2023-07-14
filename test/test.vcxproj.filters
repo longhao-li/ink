@@ -21,5 +21,8 @@
     <ClCompile Include="math\matrix2.cpp">
       <Filter>math</Filter>
     </ClCompile>
+    <ClCompile Include="math\matrix3.cpp">
+      <Filter>math</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

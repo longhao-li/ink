@@ -454,13 +454,13 @@ struct Matrix3 {
     constexpr auto inverse() noexcept -> Matrix3 & {
         const Matrix3 temp{
             column[1][1] * column[2][2] - column[2][1] * column[1][2],
-            column[2][0] * column[1][2] - column[1][0] * column[2][2],
-            column[1][0] * column[2][1] - column[2][0] * column[1][1],
             column[2][1] * column[0][2] - column[0][1] * column[2][2],
-            column[0][0] * column[2][2] - column[2][0] * column[0][2],
-            column[2][0] * column[0][1] - column[0][0] * column[2][1],
             column[0][1] * column[1][2] - column[1][1] * column[0][2],
+            column[2][0] * column[1][2] - column[1][0] * column[2][2],
+            column[0][0] * column[2][2] - column[0][2] * column[2][0],
             column[1][0] * column[0][2] - column[0][0] * column[1][2],
+            column[1][0] * column[2][1] - column[2][0] * column[1][1],
+            column[2][0] * column[0][1] - column[0][0] * column[2][1],
             column[0][0] * column[1][1] - column[1][0] * column[0][1],
         };
 
@@ -485,13 +485,13 @@ struct Matrix3 {
         const float invDet = 1.0f / this->determinant();
         return Matrix3{
             invDet * (column[1][1] * column[2][2] - column[2][1] * column[1][2]),
-            invDet * (column[2][0] * column[1][2] - column[1][0] * column[2][2]),
-            invDet * (column[1][0] * column[2][1] - column[2][0] * column[1][1]),
             invDet * (column[2][1] * column[0][2] - column[0][1] * column[2][2]),
-            invDet * (column[0][0] * column[2][2] - column[2][0] * column[0][2]),
-            invDet * (column[2][0] * column[0][1] - column[0][0] * column[2][1]),
             invDet * (column[0][1] * column[1][2] - column[1][1] * column[0][2]),
+            invDet * (column[2][0] * column[1][2] - column[1][0] * column[2][2]),
+            invDet * (column[0][0] * column[2][2] - column[0][2] * column[2][0]),
             invDet * (column[1][0] * column[0][2] - column[0][0] * column[1][2]),
+            invDet * (column[1][0] * column[2][1] - column[2][0] * column[1][1]),
+            invDet * (column[2][0] * column[0][1] - column[0][0] * column[2][1]),
             invDet * (column[0][0] * column[1][1] - column[1][0] * column[0][1]),
         };
     }
