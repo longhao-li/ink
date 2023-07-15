@@ -36,7 +36,7 @@
     <None Include=".clang-format" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\ink\core\exception.h">
+    <ClInclude Include="include\ink\core\error.h">
       <Filter>include\ink\core</Filter>
     </ClInclude>
     <ClInclude Include="include\ink\core\hash.h">
@@ -90,9 +90,12 @@
     <ClInclude Include="include\ink\math\number.h">
       <Filter>include\ink\math</Filter>
     </ClInclude>
+    <ClInclude Include="include\ink\core\file.h">
+      <Filter>include\ink\core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\core\exception.cpp">
+    <ClCompile Include="src\core\error.cpp">
       <Filter>src\core</Filter>
     </ClCompile>
     <ClCompile Include="src\core\hash.cpp">
@@ -127,6 +130,9 @@
     </ClCompile>
     <ClCompile Include="src\asset\image.cpp">
       <Filter>src\asset</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\file.cpp">
+      <Filter>src\core</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

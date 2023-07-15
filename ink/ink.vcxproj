@@ -162,7 +162,8 @@
     <ClInclude Include="include\ink\asset\image.h" />
     <ClInclude Include="include\ink\core\assert.h" />
     <ClInclude Include="include\ink\core\common.h" />
-    <ClInclude Include="include\ink\core\exception.h" />
+    <ClInclude Include="include\ink\core\error.h" />
+    <ClInclude Include="include\ink\core\file.h" />
     <ClInclude Include="include\ink\core\hash.h" />
     <ClInclude Include="include\ink\core\log.h" />
     <ClInclude Include="include\ink\core\string.h" />
@@ -180,7 +181,8 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\asset\image.cpp" />
-    <ClCompile Include="src\core\exception.cpp" />
+    <ClCompile Include="src\core\error.cpp" />
+    <ClCompile Include="src\core\file.cpp" />
     <ClCompile Include="src\core\hash.cpp" />
     <ClCompile Include="src\core\log.cpp" />
     <ClCompile Include="src\core\string.cpp" />
