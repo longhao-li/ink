@@ -191,3 +191,187 @@ TEST_CASE("2D point rotate", "[Matrix3]") {
     REQUIRE(near(rotate, rotate2));
     REQUIRE(near(a * rotate2, Vector3(-1.0f / Sqrt2<float>, 1.0f / Sqrt2<float>, 1.0f)));
 }
+
+TEST_CASE("2D vector scale", "[Matrix3]") {
+    Matrix3 s0(1.0f);
+    Matrix3 s1 = s0.scaled(0.5f, 0.5f);
+    s0.scale(0.5f, 0.5f);
+    REQUIRE(s0 == s1);
+
+    Matrix3 s2(1.0f);
+    Matrix3 s3 = s2.scaled(Vector2(0.5f, 0.5f));
+    s2.scale(Vector2(0.5f, 0.5f));
+    REQUIRE(s2 == s3);
+    REQUIRE(s1 == s2);
+
+    Vector3 v0(1.0f, -1.0f, 0.0f);
+    REQUIRE((v0 * s0) == Vector3(0.5f, -0.5f, 0.0f));
+}
+
+TEST_CASE("2D point shear", "[Matrix3]") {
+    SECTION("Shear X") {
+        Matrix3 s0(1.0f);
+        Matrix3 s1 = s0.shearedX(0.5f);
+        s0.shearX(0.5f);
+        REQUIRE(s0 == s1);
+
+        Vector3 v0(0.0f, 1.0f, 1.0f);
+        REQUIRE((v0 * s0) == Vector3(0.5f, 1.0f, 1.0f));
+    }
+
+    SECTION("Shear Y") {
+        Matrix3 s0(1.0f);
+        Matrix3 s1 = s0.shearedY(0.5f);
+        s0.shearY(0.5f);
+        REQUIRE(s0 == s1);
+
+        Vector3 v0(1.0f, 0.0f, 1.0f);
+        REQUIRE((v0 * s0) == Vector3(1.0f, 0.5f, 1.0f));
+    }
+}
+
+TEST_CASE("2D transformation", "[Matrix3]") {
+    Vector3 p0(1.0f, 0.0f, 1.0f);
+
+    Matrix3 t0(1.0f);
+    t0.scale(Sqrt2<float>, 1.0f).rotate(Pi<float> * 0.25f).translate(1.0f, 0.0f);
+
+    Vector3 p1 = p0 * t0;
+    REQUIRE(near(p1, Vector3(2.0f, 1.0f, 1.0f)));
+
+    Matrix3 t1 = Matrix3(1.0f).scaled(Sqrt2<float>, 1.0f) *
+                 Matrix3(1.0f).rotated(Pi<float> * 0.25f) * Matrix3(1.0f).translated(1.0f, 0.0f);
+    REQUIRE(t0 == t1);
+
+    Vector3 p2 = p1 * t0.inversed();
+    REQUIRE(near(p0, p2));
+}
+
+TEST_CASE("Matrix3 add operator", "[Matrix3]") {
+    SECTION("Add scalars") {
+        Matrix3 zero;
+        Matrix3 a = zero + 1.0f;
+        Matrix3 b = 1.0f + zero;
+        REQUIRE(a == b);
+        REQUIRE(a[0] == Vector3(1.0f));
+        REQUIRE(a[1] == Vector3(1.0f));
+        REQUIRE(a[2] == Vector3(1.0f));
+
+        // [1, 4, 7]
+        // [2, 5, 8]
+        // [3, 6, 9]
+        Matrix3 c(1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f);
+
+        Matrix3 d = c + 1.0f;
+        c += 1.0f;
+        REQUIRE(c == d);
+        REQUIRE(c[0] == Vector3(2.0f, 3.0f, 4.0f));
+        REQUIRE(c[1] == Vector3(5.0f, 6.0f, 7.0f));
+        REQUIRE(c[2] == Vector3(8.0f, 9.0f, 10.0f));
+    }
+
+    SECTION("Add matrices") {
+        Matrix3 a(1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f);
+        Matrix3 b(9.0f, 8.0f, 7.0f, 6.0f, 5.0f, 4.0f, 3.0f, 2.0f, 1.0f);
+        Matrix3 c = a + b;
+        a += b;
+        REQUIRE(a == c);
+        REQUIRE(a == (Matrix3() + 10.0f));
+    }
+}
+
+TEST_CASE("Matrix3 subtract", "[Matrix3]") {
+    SECTION("Subtract scalars") {
+        Matrix3 zero;
+        Matrix3 a = zero - 1.0f;
+        Matrix3 b = 1.0f - zero;
+        REQUIRE(a != b);
+        REQUIRE(a == -b);
+        REQUIRE(a[0] == Vector3(-1.0f));
+        REQUIRE(a[1] == Vector3(-1.0f));
+        REQUIRE(a[2] == Vector3(-1.0f));
+        REQUIRE(b[0] == Vector3(1.0f));
+        REQUIRE(b[1] == Vector3(1.0f));
+        REQUIRE(b[2] == Vector3(1.0f));
+
+        // [1, 4, 7]
+        // [2, 5, 8]
+        // [3, 6, 9]
+        Matrix3 c(1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f);
+        Matrix3 d = c - 1.0f;
+        c -= 1.0f;
+        REQUIRE(c == d);
+        REQUIRE(c == Matrix3(0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f));
+    }
+
+    SECTION("Subtract matrices") {
+        Matrix3 a(1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f);
+        Matrix3 b(9.0f, 8.0f, 7.0f, 6.0f, 5.0f, 4.0f, 3.0f, 2.0f, 1.0f);
+        Matrix3 c = a - b;
+        a -= b;
+        REQUIRE(a == c);
+        REQUIRE(a == Matrix3(-8.0f, -6.0f, -4.0f, -2.0f, 0.0f, 2.0f, 4.0f, 6.0f, 8.0f));
+    }
+}
+
+TEST_CASE("Matrix3 multiply", "[Matrix3]") {
+    SECTION("Multiply scalars") {
+        Matrix3 a(1.0f);
+        Matrix3 b = 2.0f * a;
+        Matrix3 c = a * 2.0f;
+        a *= 2.0f;
+        REQUIRE(a == b);
+        REQUIRE(a == c);
+        REQUIRE(a == Matrix3(2.0f));
+    }
+
+    SECTION("Multiply vectors") {
+        Matrix3 a(1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f);
+        Vector3 b(1.0f, 2.0f, 3.0f);
+
+        Vector3 c = b * a;
+        REQUIRE(c == Vector3(14.0f, 32.0f, 50.0f));
+
+        Vector3 d = a * b;
+        REQUIRE(d == Vector3(30.0f, 36.0f, 42.0f));
+    }
+
+    SECTION("Multiply matrices") {
+        Matrix3 zero;
+        Matrix3 identity(1.0f);
+
+        Matrix3 a(1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f);
+        REQUIRE((a * zero) == zero);
+        REQUIRE((zero * a) == zero);
+
+        REQUIRE((a * identity) == a);
+        REQUIRE((identity * a) == a);
+
+        Matrix3 b(1.0f, -1.0f, 2.0f, 3.0f, 2.0f, 1.0f, -2.0f, 3.0f, 1.0f);
+        Matrix3 c = a * b;
+        a *= b;
+        REQUIRE(a == c);
+        REQUIRE(a[0] == Vector3(11.0f, 13.0f, 15.0f));
+        REQUIRE(a[1] == Vector3(18.0f, 24.0f, 30.0f));
+        REQUIRE(a[2] == Vector3(17.0f, 19.0f, 21.0f));
+    }
+}
+
+TEST_CASE("Matrix3 divide", "[Matrix3]") {
+    SECTION("Divide by scalars") {
+        Matrix3 identity(1.0f);
+        Matrix3 a = identity / 2.0f;
+        REQUIRE(a == Matrix3(0.5f));
+
+        Matrix3 b(2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f);
+        Matrix3 c = 1.0f / b;
+        REQUIRE(c == Matrix3(0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f));
+    }
+
+    SECTION("Divide by matrices") {
+        Matrix3 identity(1.0f);
+        Matrix3 a(1.0f, -1.0f, 2.0f, 3.0f, 2.0f, 1.0f, -2.0f, 3.0f, 1.0f);
+        REQUIRE(near(a / a, identity));
+        REQUIRE(near(identity / a, a.inversed()));
+    }
+}
