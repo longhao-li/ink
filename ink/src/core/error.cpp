@@ -1,4 +1,4 @@
-#include "ink/core/exception.h"
+#include "ink/core/error.h"
 
 #include <Windows.h>
 
@@ -60,3 +60,18 @@ ink::SystemErrorException::SystemErrorException(SourceLocation loc,
     : Exception(loc, std::move(message)), m_errorCode(errc) {}
 
 ink::SystemErrorException::~SystemErrorException() noexcept {}
+
+ink::SystemErrorCategory::~SystemErrorCategory() noexcept {}
+
+auto ink::SystemErrorCategory::name() const noexcept -> StringView {
+    return u"System Error";
+}
+
+auto ink::SystemErrorCategory::toMessage(std::int32_t errorCode) const noexcept -> String {
+    return errorToString(errorCode);
+}
+
+auto ink::SystemErrorCategory::singleton() noexcept -> const SystemErrorCategory & {
+    static SystemErrorCategory instance;
+    return instance;
+}

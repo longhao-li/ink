@@ -201,6 +201,75 @@ auto ink::StructuredBuffer::reshape(std::uint32_t newCount, std::uint32_t newSiz
     }
 }
 
+ink::ReadbackBuffer::ReadbackBuffer() noexcept : GpuResource(), m_size(), m_gpuAddress() {}
+
+ink::ReadbackBuffer::ReadbackBuffer(std::size_t size) noexcept
+    : GpuResource(), m_size((size + 0xFF) & ~std::size_t(0xFF)), m_gpuAddress() {
+    [[maybe_unused]] HRESULT hr;
+
+    auto &dev = RenderDevice::singleton();
+
+    // Create ID3D12Resource.
+    const D3D12_HEAP_PROPERTIES heapProps{
+        /* Type                 = */ D3D12_HEAP_TYPE_READBACK,
+        /* CPUPageProperty      = */ D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+        /* MemoryPoolPreference = */ D3D12_MEMORY_POOL_UNKNOWN,
+        /* CreationNodeMask     = */ 0,
+        /* VisibleNodeMask      = */ 0,
+    };
+
+    const D3D12_RESOURCE_DESC desc{
+        /* Dimension        = */ D3D12_RESOURCE_DIMENSION_BUFFER,
+        /* Alignment        = */ 0,
+        /* Width            = */ m_size,
+        /* Height           = */ 1,
+        /* DepthOrArraySize = */ 1,
+        /* MipLevels        = */ 1,
+        /* Format           = */ DXGI_FORMAT_UNKNOWN,
+        /* SampleDesc       = */
+        {
+            /* Count   = */ 1,
+            /* Quality = */ 0,
+        },
+        /* Layout = */ D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+        /* Flags  = */ D3D12_RESOURCE_FLAG_NONE,
+    };
+
+    hr = dev.device()->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
+                                               D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+                                               IID_PPV_ARGS(m_resource.GetAddressOf()));
+
+    inkAssert(SUCCEEDED(hr), u"Failed to create ID3D12Resource for readback buffer: 0x{:X}.",
+              static_cast<std::uint32_t>(hr));
+
+    m_usageState = D3D12_RESOURCE_STATE_COPY_DEST;
+    m_gpuAddress = m_resource->GetGPUVirtualAddress();
+}
+
+ink::ReadbackBuffer::ReadbackBuffer(ReadbackBuffer &&other) noexcept = default;
+
+auto ink::ReadbackBuffer::operator=(ReadbackBuffer &&other) noexcept -> ReadbackBuffer & = default;
+
+ink::ReadbackBuffer::~ReadbackBuffer() noexcept {}
+
+auto ink::ReadbackBuffer::unmap() noexcept -> void {
+    D3D12_RANGE range{};
+    m_resource->Unmap(0, &range);
+}
+
+auto ink::ReadbackBuffer::map() const noexcept -> const void * {
+    [[maybe_unused]] HRESULT hr;
+
+    void       *ptr;
+    D3D12_RANGE range{0, m_size};
+
+    hr = m_resource->Map(0, &range, &ptr);
+    inkAssert(SUCCEEDED(hr), u"Failed to map readback buffer: 0x{:X}.",
+              static_cast<std::uint32_t>(hr));
+
+    return ptr;
+}
+
 ink::PixelBuffer::PixelBuffer() noexcept
     : GpuResource(),
       m_width(),

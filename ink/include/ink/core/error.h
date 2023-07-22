@@ -169,3 +169,149 @@ struct fmt::formatter<ink::SourceLocation, char16_t> : fmt::formatter<ink::Strin
             return ctx.out();
     }
 };
+
+namespace ink {
+
+class ErrorCategory {
+public:
+    /// @brief
+    ///   Create an error category.
+    ErrorCategory() noexcept = default;
+
+    /// @brief
+    ///   Copy constructor of error category is disabled.
+    ErrorCategory(const ErrorCategory &) = delete;
+
+    /// @brief
+    ///   Copy assignment of error category is disabled.
+    auto operator=(const ErrorCategory &) = delete;
+
+    /// @brief
+    ///   Destroy this error category.
+    virtual ~ErrorCategory() noexcept = default;
+
+    /// @brief
+    ///   Get name of this error category.
+    ///
+    /// @return
+    ///   Name of this error category.
+    [[nodiscard]]
+    virtual auto name() const noexcept -> StringView = 0;
+
+    /// @brief
+    ///  Convert the specified error code to error message according to this error category.
+    ///
+    /// @param errorCode
+    ///   The error code to get the error message.
+    ///
+    /// @return
+    ///   A string that contains error message of the error code.
+    [[nodiscard]]
+    virtual auto toMessage(std::int32_t errorCode) const noexcept -> String = 0;
+};
+
+class SystemErrorCategory : public ErrorCategory {
+public:
+    /// @brief
+    ///   Create a system error category.
+    SystemErrorCategory() noexcept = default;
+
+    /// @brief
+    ///   Destroy this system error category.
+    InkApi ~SystemErrorCategory() noexcept override;
+
+    /// @brief
+    ///   Get name of system error category.
+    ///
+    /// @return
+    ///   Name of system error category.
+    [[nodiscard]]
+    InkApi auto name() const noexcept -> StringView override;
+
+    /// @brief
+    ///  Convert the specified error code to system error message.
+    ///
+    /// @param errorCode
+    ///   The error code to get the error message.
+    ///
+    /// @return
+    ///   A string that contains error message of the error code.
+    [[nodiscard]]
+    InkApi auto toMessage(std::int32_t errorCode) const noexcept -> String override;
+
+    /// @brief
+    ///   Get system error category singleton.
+    ///
+    /// @return
+    ///   System error category singleton instance.
+    InkApi static auto singleton() noexcept -> const SystemErrorCategory &;
+};
+
+class ErrorCode {
+public:
+    /// @brief
+    ///   Create an empty error code. This is equivalent to empty system error.
+    ErrorCode() noexcept : m_errorCode(), m_category(&SystemErrorCategory::singleton()) {}
+
+    /// @brief
+    ///   Create a new error code for the specified error category.
+    ///
+    /// @param code
+    ///   Error code value.
+    /// @param category
+    ///   Error category of this error code.
+    ErrorCode(std::int32_t code, const ErrorCategory &category) noexcept
+        : m_errorCode(code), m_category(&category) {}
+
+    /// @brief
+    ///   Checks if this error code represents no error.
+    ///
+    /// @return
+    ///   A boolean value that indicates whether this error code represents no error.
+    /// @retval true
+    ///   This error code represents no error.
+    /// @retval false
+    ///   This error code represents a certain type of error.
+    [[nodiscard]]
+    auto isOk() const noexcept -> bool {
+        return m_errorCode == 0;
+    }
+
+    /// @brief
+    ///   Get value of this error code.
+    ///
+    /// @return
+    ///   Value of this error code.
+    [[nodiscard]]
+    auto value() const noexcept -> std::int32_t {
+        return m_errorCode;
+    }
+
+    /// @brief
+    ///   Get error message of this error code.
+    ///
+    /// @return
+    ///   Error message that this error code represents.
+    [[nodiscard]]
+    auto toMessage() const noexcept -> String {
+        return m_category->toMessage(m_errorCode);
+    }
+
+    /// @brief
+    ///   Set this error code to 0 in system error category.
+    auto clear() noexcept -> void {
+        m_errorCode = 0;
+        m_category  = &SystemErrorCategory::singleton();
+    }
+
+private:
+    /// @brief
+    ///   Error code value.
+    std::int32_t m_errorCode;
+
+    /// @brief
+    ///   Error category of this error code.
+    const ErrorCategory *m_category;
+};
+
+} // namespace ink

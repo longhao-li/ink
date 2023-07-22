@@ -240,6 +240,102 @@ protected:
     UnorderedAccessView m_structuredBufferUAV;
 };
 
+class ReadbackBuffer : public GpuResource {
+public:
+    /// @brief
+    ///   Create an empty readback buffer.
+    InkApi ReadbackBuffer() noexcept;
+
+    /// @brief
+    ///   Create a new readback buffer.
+    /// @note
+    ///   Errors are handled with assertions.
+    ///
+    /// @param size
+    ///   Expected size in byte of this readback buffer. The actual buffer size may be greater than
+    ///   this value due to alignment.
+    InkApi explicit ReadbackBuffer(std::size_t size) noexcept;
+
+    /// @brief
+    ///   Move constructor of readback buffer.
+    ///
+    /// @param other
+    ///   The readback buffer to be moved. The moved readback buffer will be invalidated.
+    InkApi ReadbackBuffer(ReadbackBuffer &&other) noexcept;
+
+    /// @brief
+    ///   Move assignment of readback buffer.
+    ///
+    /// @param other
+    ///   The readback buffer to be moved. The moved readback buffer will be invalidated.
+    ///
+    /// @return
+    ///   Reference to this readback buffer.
+    InkApi auto operator=(ReadbackBuffer &&other) noexcept -> ReadbackBuffer &;
+
+    /// @brief
+    ///   Destroy this readback buffer.
+    InkApi ~ReadbackBuffer() noexcept override;
+
+    /// @brief
+    ///   Get size in byte of this readback buffer.
+    ///
+    /// @return
+    ///   Size in byte of this readback buffer.
+    [[nodiscard]]
+    auto size() const noexcept -> std::size_t {
+        return m_size;
+    }
+
+    /// @brief
+    ///   Get GPU address to start of this readback buffer.
+    ///
+    /// @return
+    ///   GPU address to start of this readback buffer.
+    [[nodiscard]]
+    auto gpuAddress() const noexcept -> std::uint64_t {
+        return m_gpuAddress;
+    }
+
+    /// @brief
+    ///   Map this readback buffer to address and get pointer to start of the buffer.
+    /// @note
+    ///   The mapped memory is read-only.
+    ///
+    /// @return
+    ///   Pointer to start of this readback buffer.
+    [[nodiscard]]
+    InkApi auto map() const noexcept -> const void *;
+
+    /// @brief 
+    ///   Map this readback buffer to the specified type of CPU pointer.
+    /// @note
+    ///   The mapped memory is read-only.
+    /// 
+    /// @tparam T
+    ///   Type of the CPU pointer to be mapped to.
+    /// 
+    /// @return
+    ///   Pointer to start of this readback buffer.
+    template <typename T>
+    auto map() const noexcept -> const T * {
+        return static_cast<const T *>(this->map());
+    }
+
+    /// @brief
+    ///   Invalidate the CPU pointer mapped to this readback buffer.
+    InkApi auto unmap() noexcept -> void;
+
+protected:
+    /// @brief
+    ///   Size in byte of this readback buffer.
+    std::size_t m_size;
+
+    /// @brief
+    ///   GPU virtual address to start of this readback buffer.
+    std::uint64_t m_gpuAddress;
+};
+
 class PixelBuffer : public GpuResource {
 public:
     /// @brief
