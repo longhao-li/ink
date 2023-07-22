@@ -147,6 +147,7 @@
   <ItemGroup>
     <ClCompile Include="math\matrix2.cpp" />
     <ClCompile Include="math\matrix3.cpp" />
+    <ClCompile Include="math\matrix4.cpp" />
     <ClCompile Include="math\vector2.cpp" />
     <ClCompile Include="math\vector3.cpp" />
     <ClCompile Include="math\vector4.cpp" />

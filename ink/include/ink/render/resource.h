@@ -293,7 +293,7 @@ public:
     /// @return
     ///   GPU address to start of this readback buffer.
     [[nodiscard]]
-    auto gpuAddress() const noexcept -> std::size_t {
+    auto gpuAddress() const noexcept -> std::uint64_t {
         return m_gpuAddress;
     }
 
