@@ -144,7 +144,7 @@ struct Matrix2 {
     ///   To inverse this matrix, use @p inverse() instead.
     ///
     /// @return
-    ///   A new matrix that represents the transposed matrix.
+    ///   A new matrix that represents the inversed matrix.
     [[nodiscard]]
     constexpr auto inversed() const noexcept -> Matrix2 {
         const float det    = this->determinant();
@@ -935,6 +935,8 @@ constexpr auto operator/=(Vector3 &lhs, const Matrix3 &rhs) noexcept -> Vector3 
     return lhs;
 }
 
+struct Quaternion;
+
 /// @brief
 ///   Column major 4x4 matrix.
 struct Matrix4 {
@@ -1394,6 +1396,8 @@ struct Matrix4 {
     /// @note
     ///   It is assumed that this is already a valid 3D transform matrix.
     ///
+    /// @param axis
+    ///   The axis to be rotated along to.
     /// @param radian
     ///   Radian to rotate.
     ///
@@ -1434,6 +1438,8 @@ struct Matrix4 {
     /// @note
     ///   It is assumed that this is already a valid 2D transform matrix.
     ///
+    /// @param axis
+    ///   The axis to be rotated along to.
     /// @param radian
     ///   Radian to rotate.
     ///
@@ -1464,6 +1470,35 @@ struct Matrix4 {
             column[3],
         };
     }
+
+    /// @brief
+    ///   Apply 3D rotate transform to this matrix.
+    /// @remark
+    ///   To get rotated matrix without modifying this matrix, use @p rotated() instead.
+    /// @note
+    ///   It is assumed that this is already a valid 3D transform matrix.
+    ///
+    /// @param quat
+    ///   The quaternion that represents the rotation to be applied.
+    ///
+    /// @return
+    ///   Reference to this matrix.
+    constexpr auto rotate(Quaternion quat) noexcept -> Matrix4 &;
+
+    /// @brief
+    ///   Get 3D rotated matrix from this one.
+    /// @remark
+    ///   To apply rotate transform to this matrix, use @p rotate() instead.
+    /// @note
+    ///   It is assumed that this is already a valid 2D transform matrix.
+    ///
+    /// @param quat
+    ///   The quaternion that represents the rotation to be applied.
+    ///
+    /// @return
+    ///   Rotated matrix from this one.
+    [[nodiscard]]
+    constexpr auto rotated(Quaternion quat) const noexcept -> Matrix4;
 
     /// @brief
     ///   Apply 3D scale transform to this matrix.
