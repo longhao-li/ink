@@ -170,6 +170,7 @@
     <ClInclude Include="include\ink\core\window.h" />
     <ClInclude Include="include\ink\math\matrix.h" />
     <ClInclude Include="include\ink\math\number.h" />
+    <ClInclude Include="include\ink\math\quaternion.h" />
     <ClInclude Include="include\ink\math\vector.h" />
     <ClInclude Include="include\ink\render\color.h" />
     <ClInclude Include="include\ink\render\command_buffer.h" />
