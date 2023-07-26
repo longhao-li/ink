@@ -307,14 +307,14 @@ public:
     [[nodiscard]]
     InkApi auto map() const noexcept -> const void *;
 
-    /// @brief 
+    /// @brief
     ///   Map this readback buffer to the specified type of CPU pointer.
     /// @note
     ///   The mapped memory is read-only.
-    /// 
+    ///
     /// @tparam T
     ///   Type of the CPU pointer to be mapped to.
-    /// 
+    ///
     /// @return
     ///   Pointer to start of this readback buffer.
     template <typename T>
@@ -811,10 +811,10 @@ public:
     ///   be used if this value is greater than maximum available mipmap level. Pass 0 to use
     ///   maximum available mipmap level. Please notice that mipmap will not be automatically
     ///   generated when creating this texture.
-    Texture2D(std::uint32_t width,
-              std::uint32_t height,
-              DXGI_FORMAT   format,
-              std::uint32_t mipLevels) noexcept
+    InkApi Texture2D(std::uint32_t width,
+                     std::uint32_t height,
+                     DXGI_FORMAT   format,
+                     std::uint32_t mipLevels) noexcept
         : Texture2D(width, height, 1, format, mipLevels, false) {}
 
     /// @brief

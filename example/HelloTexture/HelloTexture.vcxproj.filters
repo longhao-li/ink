@@ -4,10 +4,20 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include=".clang-format" />
+  </ItemGroup>
+  <ItemGroup>
     <FxCompile Include="vertex.hlsl" />
     <FxCompile Include="pixel.hlsl" />
   </ItemGroup>
   <ItemGroup>
-    <None Include=".clang-format" />
+    <Filter Include="asset">
+      <UniqueIdentifier>{5d41b209-d435-4d85-a5c0-4e6d150ce265}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="asset\container.jpg">
+      <Filter>asset</Filter>
+    </Image>
   </ItemGroup>
 </Project>

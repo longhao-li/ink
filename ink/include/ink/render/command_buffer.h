@@ -622,7 +622,7 @@ public:
     auto setGraphicsSampler(std::uint32_t       rootParam,
                             std::uint32_t       offset,
                             CpuDescriptorHandle handle) noexcept -> void {
-        m_dynamicViewHeap.bindGraphicsDescriptor(rootParam, offset, handle);
+        m_dynamicSamplerHeap.bindGraphicsDescriptor(rootParam, offset, handle);
     }
 
     /// @brief
