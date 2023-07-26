@@ -27,5 +27,8 @@
     <ClCompile Include="math\matrix4.cpp">
       <Filter>math</Filter>
     </ClCompile>
+    <ClCompile Include="math\quaternion.cpp">
+      <Filter>math</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
