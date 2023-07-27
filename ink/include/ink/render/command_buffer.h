@@ -181,6 +181,16 @@ public:
     ///   The command list that is used to bind the specified descriptor heap.
     InkApi auto submitComputeDescriptors(ID3D12GraphicsCommandList *cmdList) noexcept -> void;
 
+    /// @brief
+    ///   Get current dynamic descriptor heap. Mainly used for CommandBuffer to set descriptor heaps.
+    /// 
+    /// @return
+    ///   Current dynamic descriptor heap.
+    [[nodiscard]]
+    auto dynamicDescriptorHeap() const noexcept -> ID3D12DescriptorHeap* {
+        return m_currentHeap;
+    }
+
 private:
     /// @brief
     ///   The render device that is used to allocate and free dynamic descriptor heaps.
@@ -292,7 +302,7 @@ public:
     /// @return
     ///   The temporary upload buffer allocation.
     [[nodiscard]]
-    InkApi auto newUploadBuffer(std::size_t size) noexcept -> DynamicBufferAllocation;
+    InkApi auto newUploadBuffer(std::size_t size, std::size_t alignment = 256U) noexcept -> DynamicBufferAllocation;
 
     /// @brief
     ///   Allocate a temporary unordered access buffer.

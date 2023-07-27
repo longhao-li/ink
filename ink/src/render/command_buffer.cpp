@@ -838,10 +838,10 @@ ink::DynamicBufferAllocator::~DynamicBufferAllocator() noexcept {
     }
 }
 
-auto ink::DynamicBufferAllocator::newUploadBuffer(std::size_t size) noexcept
+auto ink::DynamicBufferAllocator::newUploadBuffer(std::size_t size, std::size_t alignment) noexcept
     -> DynamicBufferAllocation {
     // Align up allocate size.
-    size = (size + 0xFF) & ~std::size_t(0xFF);
+    size = (size + alignment - 1) & ~std::size_t(alignment - 1);
 
     auto &manager = DynamicBufferPageManager::singleton();
 
@@ -859,8 +859,13 @@ auto ink::DynamicBufferAllocator::newUploadBuffer(std::size_t size) noexcept
         };
     }
 
+    std::size_t extraSize = 0;
+    if (m_uploadPage != nullptr)
+        extraSize = ((m_uploadPageOffset + alignment - 1) & ~std::size_t(alignment - 1)) -
+                    m_uploadPageOffset;
+
     // No enough space in current page, retire current page.
-    if (m_uploadPage != nullptr && m_uploadPageOffset + size > DEFAULT_PAGE_SIZE) {
+    if (m_uploadPage != nullptr && m_uploadPageOffset + size + extraSize > DEFAULT_PAGE_SIZE) {
         m_retiredPages.push_back(m_uploadPage);
         m_uploadPage = nullptr;
     }
@@ -869,6 +874,7 @@ auto ink::DynamicBufferAllocator::newUploadBuffer(std::size_t size) noexcept
     if (m_uploadPage == nullptr) {
         m_uploadPage       = manager.newUploadPage(DEFAULT_PAGE_SIZE);
         m_uploadPageOffset = 0;
+        extraSize          = 0;
     }
 
     auto *const page = static_cast<DynamicBufferPage *>(m_uploadPage);
@@ -876,12 +882,12 @@ auto ink::DynamicBufferAllocator::newUploadBuffer(std::size_t size) noexcept
     DynamicBufferAllocation allocation{
         /* resource   = */ page,
         /* size       = */ size,
-        /* offset     = */ m_uploadPageOffset,
-        /* data       = */ page->map<std::uint8_t>() + m_uploadPageOffset,
-        /* gpuAddress = */ page->gpuAddress() + m_uploadPageOffset,
+        /* offset     = */ m_uploadPageOffset + extraSize,
+        /* data       = */ page->map<std::uint8_t>() + m_uploadPageOffset + extraSize,
+        /* gpuAddress = */ page->gpuAddress() + m_uploadPageOffset + extraSize,
     };
 
-    m_uploadPageOffset += size;
+    m_uploadPageOffset += size + extraSize;
     return allocation;
 }
 
@@ -1118,7 +1124,7 @@ auto ink::CommandBuffer::copyTexture(const void   *src,
     const std::uint32_t rowPitch  = (std::uint32_t(srcRowPitch) + 0xFF) & ~std::uint32_t(0xFF);
     const std::size_t   allocSize = (std::size_t(height) * rowPitch + 511) & ~std::size_t(511);
 
-    DynamicBufferAllocation allocation(m_bufferAllocator.newUploadBuffer(allocSize));
+    DynamicBufferAllocation allocation(m_bufferAllocator.newUploadBuffer(allocSize, 512U));
 
     { // Copy data to temporary upload buffer.
         std::uint8_t       *buffer = static_cast<std::uint8_t *>(allocation.data);
@@ -1289,6 +1295,21 @@ auto ink::CommandBuffer::draw(std::uint32_t vertexCount, std::uint32_t firstVert
     -> void {
     m_dynamicViewHeap.submitGraphicsDescriptors(m_cmdList.Get());
     m_dynamicSamplerHeap.submitGraphicsDescriptors(m_cmdList.Get());
+
+    // TODO: Duplicate setting descriptor heaps to avoid D3D12 errors. Use some other methods to
+    // improve performance.
+    ID3D12DescriptorHeap *heaps[2];
+    std::uint32_t         heapCount = 0;
+
+    heaps[heapCount] = m_dynamicViewHeap.dynamicDescriptorHeap();
+    if (heaps[heapCount] != nullptr)
+        heapCount += 1;
+
+    heaps[heapCount] = m_dynamicSamplerHeap.dynamicDescriptorHeap();
+    if (heaps[heapCount] != nullptr)
+        heapCount += 1;
+
+    m_cmdList->SetDescriptorHeaps(heapCount, heaps);
     m_cmdList->DrawInstanced(vertexCount, 1, firstVertex, 0);
 }
 
@@ -1297,6 +1318,21 @@ auto ink::CommandBuffer::drawIndexed(std::uint32_t indexCount,
                                      std::uint32_t firstVertex) noexcept -> void {
     m_dynamicViewHeap.submitGraphicsDescriptors(m_cmdList.Get());
     m_dynamicSamplerHeap.submitGraphicsDescriptors(m_cmdList.Get());
+
+    // TODO: Duplicate setting descriptor heaps to avoid D3D12 errors. Use some other methods to
+    // improve performance.
+    ID3D12DescriptorHeap *heaps[2];
+    std::uint32_t         heapCount = 0;
+
+    heaps[heapCount] = m_dynamicViewHeap.dynamicDescriptorHeap();
+    if (heaps[heapCount] != nullptr)
+        heapCount += 1;
+
+    heaps[heapCount] = m_dynamicSamplerHeap.dynamicDescriptorHeap();
+    if (heaps[heapCount] != nullptr)
+        heapCount += 1;
+
+    m_cmdList->SetDescriptorHeaps(heapCount, heaps);
     m_cmdList->DrawIndexedInstanced(indexCount, 1, firstIndex, firstVertex, 0);
 }
 
@@ -1305,6 +1341,21 @@ auto ink::CommandBuffer::dispatch(std::size_t groupX,
                                   std::size_t groupZ) noexcept -> void {
     m_dynamicViewHeap.submitComputeDescriptors(m_cmdList.Get());
     m_dynamicSamplerHeap.submitComputeDescriptors(m_cmdList.Get());
+
+    // TODO: Duplicate setting descriptor heaps to avoid D3D12 errors. Use some other methods to
+    // improve performance.
+    ID3D12DescriptorHeap *heaps[2];
+    std::uint32_t         heapCount = 0;
+
+    heaps[heapCount] = m_dynamicViewHeap.dynamicDescriptorHeap();
+    if (heaps[heapCount] != nullptr)
+        heapCount += 1;
+
+    heaps[heapCount] = m_dynamicSamplerHeap.dynamicDescriptorHeap();
+    if (heaps[heapCount] != nullptr)
+        heapCount += 1;
+
+    m_cmdList->SetDescriptorHeaps(heapCount, heaps);
     m_cmdList->Dispatch(static_cast<UINT>(groupX), static_cast<UINT>(groupY),
                         static_cast<UINT>(groupZ));
 }

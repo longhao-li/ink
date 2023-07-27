@@ -1855,7 +1855,7 @@ inline auto perspective(float fovY, float aspect, float zNear, float zFar) noexc
     const float z = zFar / (zFar - zNear);
 
     return Matrix4{
-        Vector4{aspect * t, 0.0f, 0.0f, 0.0f},
+        Vector4{t / aspect, 0.0f, 0.0f, 0.0f},
         Vector4{0.0f, t, 0.0f, 0.0f},
         Vector4{0.0f, 0.0f, z, -zNear * z},
         Vector4{0.0f, 0.0f, 1.0f, 0.0f},

@@ -19,5 +19,8 @@
     <Image Include="asset\container.jpg">
       <Filter>asset</Filter>
     </Image>
+    <Image Include="asset\awesomeface.png">
+      <Filter>asset</Filter>
+    </Image>
   </ItemGroup>
 </Project>

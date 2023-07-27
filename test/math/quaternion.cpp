@@ -15,11 +15,6 @@ static auto near(Vector4 a, Vector4 b, float eps = FLT_EPSILON) noexcept -> bool
     return near(a.x, b.x, eps) && near(a.y, b.y, eps) && near(a.z, b.z, eps) && near(a.w, b.w, eps);
 }
 
-static auto near(const Matrix4 &a, const Matrix4 &b, float eps = FLT_EPSILON) noexcept -> bool {
-    return near(a[0], b[0], eps) && near(a[1], b[1], eps) && near(a[2], b[2], eps) &&
-           near(a[3], b[3], eps);
-}
-
 TEST_CASE("Quaternion construct", "[Quaternion]") {
     Quaternion zero;
     REQUIRE(zero.w == 0);
@@ -106,6 +101,7 @@ TEST_CASE("Quaternion subtract operator", "[Quaternion]") {
         Quaternion b(1.0f, -1.0f, 1.0f, -1.0f);
         Quaternion c = a - b;
         a -= b;
+        REQUIRE(a == c);
         REQUIRE(a == Quaternion(0.0f, 1.0f, -1.0f, 1.0f));
     }
 }

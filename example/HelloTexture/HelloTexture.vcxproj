@@ -199,6 +199,7 @@
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
+    <Image Include="asset\awesomeface.png" />
     <Image Include="asset\container.jpg" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
