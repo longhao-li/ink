@@ -1289,6 +1289,21 @@ auto ink::CommandBuffer::draw(std::uint32_t vertexCount, std::uint32_t firstVert
     -> void {
     m_dynamicViewHeap.submitGraphicsDescriptors(m_cmdList.Get());
     m_dynamicSamplerHeap.submitGraphicsDescriptors(m_cmdList.Get());
+
+    // TODO: Duplicate setting descriptor heaps to avoid D3D12 errors. Use some other methods to
+    // improve performance.
+    ID3D12DescriptorHeap *heaps[2];
+    std::uint32_t         heapCount = 0;
+
+    heaps[heapCount] = m_dynamicViewHeap.dynamicDescriptorHeap();
+    if (heaps[heapCount] != nullptr)
+        heapCount += 1;
+
+    heaps[heapCount] = m_dynamicSamplerHeap.dynamicDescriptorHeap();
+    if (heaps[heapCount] != nullptr)
+        heapCount += 1;
+
+    m_cmdList->SetDescriptorHeaps(heapCount, heaps);
     m_cmdList->DrawInstanced(vertexCount, 1, firstVertex, 0);
 }
 
@@ -1297,6 +1312,21 @@ auto ink::CommandBuffer::drawIndexed(std::uint32_t indexCount,
                                      std::uint32_t firstVertex) noexcept -> void {
     m_dynamicViewHeap.submitGraphicsDescriptors(m_cmdList.Get());
     m_dynamicSamplerHeap.submitGraphicsDescriptors(m_cmdList.Get());
+
+    // TODO: Duplicate setting descriptor heaps to avoid D3D12 errors. Use some other methods to
+    // improve performance.
+    ID3D12DescriptorHeap *heaps[2];
+    std::uint32_t         heapCount = 0;
+
+    heaps[heapCount] = m_dynamicViewHeap.dynamicDescriptorHeap();
+    if (heaps[heapCount] != nullptr)
+        heapCount += 1;
+
+    heaps[heapCount] = m_dynamicSamplerHeap.dynamicDescriptorHeap();
+    if (heaps[heapCount] != nullptr)
+        heapCount += 1;
+
+    m_cmdList->SetDescriptorHeaps(heapCount, heaps);
     m_cmdList->DrawIndexedInstanced(indexCount, 1, firstIndex, firstVertex, 0);
 }
 
@@ -1305,6 +1335,21 @@ auto ink::CommandBuffer::dispatch(std::size_t groupX,
                                   std::size_t groupZ) noexcept -> void {
     m_dynamicViewHeap.submitComputeDescriptors(m_cmdList.Get());
     m_dynamicSamplerHeap.submitComputeDescriptors(m_cmdList.Get());
+
+    // TODO: Duplicate setting descriptor heaps to avoid D3D12 errors. Use some other methods to
+    // improve performance.
+    ID3D12DescriptorHeap *heaps[2];
+    std::uint32_t         heapCount = 0;
+
+    heaps[heapCount] = m_dynamicViewHeap.dynamicDescriptorHeap();
+    if (heaps[heapCount] != nullptr)
+        heapCount += 1;
+
+    heaps[heapCount] = m_dynamicSamplerHeap.dynamicDescriptorHeap();
+    if (heaps[heapCount] != nullptr)
+        heapCount += 1;
+
+    m_cmdList->SetDescriptorHeaps(heapCount, heaps);
     m_cmdList->Dispatch(static_cast<UINT>(groupX), static_cast<UINT>(groupY),
                         static_cast<UINT>(groupZ));
 }
