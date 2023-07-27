@@ -1,8 +1,8 @@
 #include <ink/asset/image.h>
 #include <ink/core/log.h>
 #include <ink/core/window.h>
-#include <ink/math/matrix.h>
 #include <ink/math/number.h>
+#include <ink/math/quaternion.h>
 #include <ink/render/command_buffer.h>
 #include <ink/render/swap_chain.h>
 
@@ -17,12 +17,52 @@ struct Vertex {
     Vector2 texcoord;
 };
 
+struct Camera {
+    Vector4 position    = {0.0f, 0.0f, 0.0f, 1.0f};
+    float   pitch       = 0;
+    float   roll        = 0;
+    float   fovY        = Pi<float> / 2.0f;
+    float   aspectRatio = 4.0f / 3.0f;
+    float   zNear       = 0.1f;
+    float   zFar        = 1000.0f;
+
+    auto applyPitch(float offset) noexcept -> void {
+        pitch += offset;
+        pitch = std::clamp(pitch, -Pi<float> * 0.4f, Pi<float> * 0.4f);
+    }
+
+    auto applyRoll(float offset) noexcept -> void {
+        roll += offset;
+        roll = std::fmod(roll, Pi<float> * 2.0f);
+    }
+
+    [[nodiscard]]
+    auto direction() const noexcept -> Vector4 {
+        Quaternion quat(pitch, roll, 0.0f);
+        Quaternion dir(0.0f, 0.0f, 0.0f, 1.0f);
+        dir = quat * dir * quat.conjugated();
+        return Vector4{dir.x, dir.y, dir.z, 0.0f}.normalized();
+    }
+
+    [[nodiscard]]
+    auto lookAt() const noexcept -> Matrix4 {
+        auto dir = direction();
+        return ink::lookTo({position.x, position.y, position.z}, {dir.x, dir.y, dir.z},
+                           {0.0f, 1.0f, 0.0f});
+    }
+
+    [[nodiscard]]
+    auto perspective() const noexcept -> Matrix4 {
+        return ink::perspective(fovY, aspectRatio, zNear, zFar);
+    }
+};
+
 class Application {
 public:
     Application() noexcept;
 
     auto run() -> void;
-    auto update() -> void;
+    auto update(float deltaTime) -> void;
 
 private:
     Window      m_mainWindow;
@@ -37,6 +77,8 @@ private:
     Texture2D        m_boxTexture;
     Texture2D        m_faceTexture;
     SamplerView      m_sampler;
+
+    Camera m_mainCamera;
 };
 
 inline constexpr Vertex VERTICES[] = {
@@ -234,6 +276,7 @@ Application::Application() noexcept
         desc.PrimitiveTopologyType              = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
         desc.NumRenderTargets                   = 1;
         desc.RTVFormats[0]                      = m_swapChain.pixelFormat();
+        desc.DSVFormat                          = m_depthBuffer.pixelFormat();
         desc.SampleDesc.Count                   = 1;
 
         m_pipelineState = GraphicsPipelineState(desc);
@@ -259,13 +302,22 @@ Application::Application() noexcept
 }
 
 auto Application::run() -> void {
+    LARGE_INTEGER now, lastUpdate, countsPerSec;
+    QueryPerformanceFrequency(&countsPerSec);
+    QueryPerformanceCounter(&now);
+    const double timeCoef = 1.0 / static_cast<double>(countsPerSec.QuadPart);
+    lastUpdate            = now;
+
     MSG msg{};
     while (!m_mainWindow.isClosed()) {
         if (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         } else {
-            this->update();
+            QueryPerformanceCounter(&now);
+            double deltaTime = static_cast<double>(now.QuadPart - lastUpdate.QuadPart) * timeCoef;
+            this->update(static_cast<float>(deltaTime));
+            lastUpdate = now;
         }
     }
 }
@@ -276,7 +328,28 @@ struct Transform {
     Matrix4 projection;
 };
 
-auto Application::update() -> void {
+auto Application::update(float deltaTime) -> void {
+    { // Update camera.
+        Vector4 dir   = m_mainCamera.direction();
+        Vector4 right = cross(Vector4{0.0f, 1.0f, 0.0f, 0.0f}, dir).normalized();
+        if (isKeyPressed(KeyCode::W))
+            m_mainCamera.position += deltaTime * dir;
+        if (isKeyPressed(KeyCode::A))
+            m_mainCamera.position -= deltaTime * right;
+        if (isKeyPressed(KeyCode::S))
+            m_mainCamera.position -= deltaTime * dir;
+        if (isKeyPressed(KeyCode::D))
+            m_mainCamera.position += deltaTime * right;
+        if (isKeyPressed(KeyCode::Up))
+            m_mainCamera.applyPitch(-deltaTime);
+        if (isKeyPressed(KeyCode::Down))
+            m_mainCamera.applyPitch(deltaTime);
+        if (isKeyPressed(KeyCode::Left))
+            m_mainCamera.applyRoll(-deltaTime);
+        if (isKeyPressed(KeyCode::Right))
+            m_mainCamera.applyRoll(deltaTime);
+    }
+
     LARGE_INTEGER now, countsPerSec;
     QueryPerformanceFrequency(&countsPerSec);
     QueryPerformanceCounter(&now);
@@ -288,12 +361,8 @@ auto Application::update() -> void {
     Transform transform;
     transform.model = Matrix4(1.0f);
     transform.model.rotate({0.5f, 1.0f, 0.0f}, Pi<float> * timeCoef * 0.25f);
-    transform.view = Matrix4(1.0f);
-    transform.view.translate(0.0f, 0.0f, 3.0f);
-
-    const float aspect =
-        static_cast<float>(m_mainWindow.width()) / static_cast<float>(m_mainWindow.height());
-    transform.projection = perspective(Pi<float> * 0.25f, aspect, 0.1f, 100.0f);
+    transform.view       = m_mainCamera.lookAt();
+    transform.projection = m_mainCamera.perspective();
 
     auto &backBuffer = m_swapChain.backBuffer();
 
