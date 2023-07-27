@@ -575,9 +575,14 @@ ink::DepthBuffer::DepthBuffer(std::uint32_t width,
             /* Flags  = */ D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL,
         };
 
-        hr =
-            dev.device()->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, state(),
-                                                  nullptr, IID_PPV_ARGS(m_resource.GetAddressOf()));
+        D3D12_CLEAR_VALUE clearValue;
+        clearValue.Format               = m_pixelFormat;
+        clearValue.DepthStencil.Depth   = 1.0f;
+        clearValue.DepthStencil.Stencil = 0;
+
+        hr = dev.device()->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, state(),
+                                                   &clearValue,
+                                                   IID_PPV_ARGS(m_resource.GetAddressOf()));
         inkAssert(SUCCEEDED(hr), u"Failed to create ID3D12Resource for depth buffer: 0x{:X}.",
                   static_cast<std::uint32_t>(hr));
     }

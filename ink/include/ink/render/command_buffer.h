@@ -302,7 +302,7 @@ public:
     /// @return
     ///   The temporary upload buffer allocation.
     [[nodiscard]]
-    InkApi auto newUploadBuffer(std::size_t size) noexcept -> DynamicBufferAllocation;
+    InkApi auto newUploadBuffer(std::size_t size, std::size_t alignment = 256U) noexcept -> DynamicBufferAllocation;
 
     /// @brief
     ///   Allocate a temporary unordered access buffer.

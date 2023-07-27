@@ -838,10 +838,10 @@ ink::DynamicBufferAllocator::~DynamicBufferAllocator() noexcept {
     }
 }
 
-auto ink::DynamicBufferAllocator::newUploadBuffer(std::size_t size) noexcept
+auto ink::DynamicBufferAllocator::newUploadBuffer(std::size_t size, std::size_t alignment) noexcept
     -> DynamicBufferAllocation {
     // Align up allocate size.
-    size = (size + 0xFF) & ~std::size_t(0xFF);
+    size = (size + alignment - 1) & ~std::size_t(alignment - 1);
 
     auto &manager = DynamicBufferPageManager::singleton();
 
@@ -859,8 +859,13 @@ auto ink::DynamicBufferAllocator::newUploadBuffer(std::size_t size) noexcept
         };
     }
 
+    std::size_t extraSize = 0;
+    if (m_uploadPage != nullptr)
+        extraSize = ((m_uploadPageOffset + alignment - 1) & ~std::size_t(alignment - 1)) -
+                    m_uploadPageOffset;
+
     // No enough space in current page, retire current page.
-    if (m_uploadPage != nullptr && m_uploadPageOffset + size > DEFAULT_PAGE_SIZE) {
+    if (m_uploadPage != nullptr && m_uploadPageOffset + size + extraSize > DEFAULT_PAGE_SIZE) {
         m_retiredPages.push_back(m_uploadPage);
         m_uploadPage = nullptr;
     }
@@ -869,6 +874,7 @@ auto ink::DynamicBufferAllocator::newUploadBuffer(std::size_t size) noexcept
     if (m_uploadPage == nullptr) {
         m_uploadPage       = manager.newUploadPage(DEFAULT_PAGE_SIZE);
         m_uploadPageOffset = 0;
+        extraSize          = 0;
     }
 
     auto *const page = static_cast<DynamicBufferPage *>(m_uploadPage);
@@ -876,12 +882,12 @@ auto ink::DynamicBufferAllocator::newUploadBuffer(std::size_t size) noexcept
     DynamicBufferAllocation allocation{
         /* resource   = */ page,
         /* size       = */ size,
-        /* offset     = */ m_uploadPageOffset,
-        /* data       = */ page->map<std::uint8_t>() + m_uploadPageOffset,
-        /* gpuAddress = */ page->gpuAddress() + m_uploadPageOffset,
+        /* offset     = */ m_uploadPageOffset + extraSize,
+        /* data       = */ page->map<std::uint8_t>() + m_uploadPageOffset + extraSize,
+        /* gpuAddress = */ page->gpuAddress() + m_uploadPageOffset + extraSize,
     };
 
-    m_uploadPageOffset += size;
+    m_uploadPageOffset += size + extraSize;
     return allocation;
 }
 
@@ -1118,7 +1124,7 @@ auto ink::CommandBuffer::copyTexture(const void   *src,
     const std::uint32_t rowPitch  = (std::uint32_t(srcRowPitch) + 0xFF) & ~std::uint32_t(0xFF);
     const std::size_t   allocSize = (std::size_t(height) * rowPitch + 511) & ~std::size_t(511);
 
-    DynamicBufferAllocation allocation(m_bufferAllocator.newUploadBuffer(allocSize));
+    DynamicBufferAllocation allocation(m_bufferAllocator.newUploadBuffer(allocSize, 512U));
 
     { // Copy data to temporary upload buffer.
         std::uint8_t       *buffer = static_cast<std::uint8_t *>(allocation.data);
