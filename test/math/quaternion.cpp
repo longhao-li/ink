@@ -11,10 +11,6 @@ static auto near(Quaternion a, Quaternion b, float eps = FLT_EPSILON) noexcept -
     return near(a.w, b.w, eps) && near(a.x, b.x, eps) && near(a.y, b.y, eps) && near(a.z, b.z, eps);
 }
 
-static auto near(Vector4 a, Vector4 b, float eps = FLT_EPSILON) noexcept -> bool {
-    return near(a.x, b.x, eps) && near(a.y, b.y, eps) && near(a.z, b.z, eps) && near(a.w, b.w, eps);
-}
-
 TEST_CASE("Quaternion construct", "[Quaternion]") {
     Quaternion zero;
     REQUIRE(zero.w == 0);

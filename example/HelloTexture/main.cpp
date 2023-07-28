@@ -47,8 +47,7 @@ struct Camera {
     [[nodiscard]]
     auto lookAt() const noexcept -> Matrix4 {
         auto dir = direction();
-        return ink::lookTo({position.x, position.y, position.z}, {dir.x, dir.y, dir.z},
-                           {0.0f, 1.0f, 0.0f});
+        return ink::lookTo(position, dir, {0.0f, 1.0f, 0.0f, 0.0f});
     }
 
     [[nodiscard]]
