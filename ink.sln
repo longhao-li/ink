@@ -21,6 +21,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "test", "test\test.vcxproj",
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "HelloTexture", "example\HelloTexture\HelloTexture.vcxproj", "{BFA91194-2D3B-4B21-81A7-51876BE92115}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "HelloLighting", "example\HelloLighting\HelloLighting.vcxproj", "{727798C8-FD67-4876-963A-CACB9E9D4EF9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -85,6 +87,14 @@ Global
 		{BFA91194-2D3B-4B21-81A7-51876BE92115}.Release|x64.Build.0 = Release|x64
 		{BFA91194-2D3B-4B21-81A7-51876BE92115}.Release|x86.ActiveCfg = Release|Win32
 		{BFA91194-2D3B-4B21-81A7-51876BE92115}.Release|x86.Build.0 = Release|Win32
+		{727798C8-FD67-4876-963A-CACB9E9D4EF9}.Debug|x64.ActiveCfg = Debug|x64
+		{727798C8-FD67-4876-963A-CACB9E9D4EF9}.Debug|x64.Build.0 = Debug|x64
+		{727798C8-FD67-4876-963A-CACB9E9D4EF9}.Debug|x86.ActiveCfg = Debug|Win32
+		{727798C8-FD67-4876-963A-CACB9E9D4EF9}.Debug|x86.Build.0 = Debug|Win32
+		{727798C8-FD67-4876-963A-CACB9E9D4EF9}.Release|x64.ActiveCfg = Release|x64
+		{727798C8-FD67-4876-963A-CACB9E9D4EF9}.Release|x64.Build.0 = Release|x64
+		{727798C8-FD67-4876-963A-CACB9E9D4EF9}.Release|x86.ActiveCfg = Release|Win32
+		{727798C8-FD67-4876-963A-CACB9E9D4EF9}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -95,6 +105,7 @@ Global
 		{D6A31F31-61CB-4394-ACE2-FB0B8667798B} = {8CDB08F0-CBF4-4966-A703-6E48336C62BA}
 		{3F883697-B5F9-4813-B08C-1E50BC6D0AFA} = {46EE32E6-0BC7-4815-B965-4F34DBEFD0C1}
 		{BFA91194-2D3B-4B21-81A7-51876BE92115} = {8CDB08F0-CBF4-4966-A703-6E48336C62BA}
+		{727798C8-FD67-4876-963A-CACB9E9D4EF9} = {8CDB08F0-CBF4-4966-A703-6E48336C62BA}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {E0446119-0B46-40C4-9064-79D12DA6A631}
