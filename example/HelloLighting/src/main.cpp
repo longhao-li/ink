@@ -106,6 +106,11 @@ public:
     }
 
     [[nodiscard]]
+    auto position() const noexcept -> Vector4 {
+        return m_position;
+    }
+
+    [[nodiscard]]
     auto projection() const noexcept -> Matrix4 {
         if (!m_isProjectionDirty)
             return m_projection;
@@ -124,7 +129,7 @@ private:
     float        m_aspectRatio       = 4.0f / 3.0f;
     float        m_zNear             = 0.1f;
     float        m_zFar              = 1000.0f;
-    Vector4      m_position          = {0.0f, 0.0f, -3.0f, 1.0f};
+    Vector4      m_position          = {0.0f, 1.0f, -3.0f, 1.0f};
 
     mutable Matrix4 m_lookAt{};
     mutable Matrix4 m_projection{};
@@ -334,6 +339,7 @@ struct TransformUniform {
 };
 
 struct LightUniform {
+    Vector4 cameraPos;
     Vector4 lightPos;
     Color   objectColor;
     Color   lightColor;
@@ -364,6 +370,7 @@ auto Application::update(float deltaTime) -> void {
     transform.projection = m_mainCamera.projection();
 
     LightUniform light;
+    light.cameraPos   = m_mainCamera.position();
     light.lightPos    = {1.2f, 1.0f, 2.0f, 1.0f};
     light.lightColor  = {1.0f, 1.0f, 1.0f, 1.0f};
     light.objectColor = {1.0f, 0.5f, 0.31f, 1.0f};
