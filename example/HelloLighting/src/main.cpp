@@ -132,28 +132,28 @@ private:
 
 struct Vertex {
     Vector3 position;
-    Vector2 texcoord;
+    Vector3 normal;
 };
 
 constexpr Vertex VERTICES[] = {
-    {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f}}, {{0.5f, -0.5f, -0.5f}, {1.0f, 0.0f}},
-    {{0.5f, 0.5f, -0.5f}, {1.0f, 1.0f}},   {{0.5f, 0.5f, -0.5f}, {1.0f, 1.0f}},
-    {{-0.5f, 0.5f, -0.5f}, {0.0f, 1.0f}},  {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f}},
-    {{-0.5f, -0.5f, 0.5f}, {0.0f, 0.0f}},  {{0.5f, -0.5f, 0.5f}, {1.0f, 0.0f}},
-    {{0.5f, 0.5f, 0.5f}, {1.0f, 1.0f}},    {{0.5f, 0.5f, 0.5f}, {1.0f, 1.0f}},
-    {{-0.5f, 0.5f, 0.5f}, {0.0f, 1.0f}},   {{-0.5f, -0.5f, 0.5f}, {0.0f, 0.0f}},
-    {{-0.5f, 0.5f, 0.5f}, {1.0f, 0.0f}},   {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f}},
-    {{-0.5f, -0.5f, -0.5f}, {0.0f, 1.0f}}, {{-0.5f, -0.5f, -0.5f}, {0.0f, 1.0f}},
-    {{-0.5f, -0.5f, 0.5f}, {0.0f, 0.0f}},  {{-0.5f, 0.5f, 0.5f}, {1.0f, 0.0f}},
-    {{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f}},    {{0.5f, 0.5f, -0.5f}, {1.0f, 1.0f}},
-    {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f}},  {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f}},
-    {{0.5f, -0.5f, 0.5f}, {0.0f, 0.0f}},   {{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f}},
-    {{-0.5f, -0.5f, -0.5f}, {0.0f, 1.0f}}, {{0.5f, -0.5f, -0.5f}, {1.0f, 1.0f}},
-    {{0.5f, -0.5f, 0.5f}, {1.0f, 0.0f}},   {{0.5f, -0.5f, 0.5f}, {1.0f, 0.0f}},
-    {{-0.5f, -0.5f, 0.5f}, {0.0f, 0.0f}},  {{-0.5f, -0.5f, -0.5f}, {0.0f, 1.0f}},
-    {{-0.5f, 0.5f, -0.5f}, {0.0f, 1.0f}},  {{0.5f, 0.5f, -0.5f}, {1.0f, 1.0f}},
-    {{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f}},    {{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f}},
-    {{-0.5f, 0.5f, 0.5f}, {0.0f, 0.0f}},   {{-0.5f, 0.5f, -0.5f}, {0.0f, 1.0f}},
+    {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}}, {{0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}},
+    {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}},   {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}},
+    {{-0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}},  {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}},
+    {{-0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},   {{0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+    {{0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},     {{0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+    {{-0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},    {{-0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+    {{-0.5f, 0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}},   {{-0.5f, 0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}},
+    {{-0.5f, -0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}}, {{-0.5f, -0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}},
+    {{-0.5f, -0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}},  {{-0.5f, 0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}},
+    {{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}},     {{0.5f, 0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+    {{0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},   {{0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+    {{0.5f, -0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}},    {{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}},
+    {{-0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}}, {{0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}},
+    {{0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}},   {{0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}},
+    {{-0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}},  {{-0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}},
+    {{-0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},   {{0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+    {{0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},     {{0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+    {{-0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},    {{-0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
 };
 
 class Application {
@@ -186,9 +186,9 @@ constexpr D3D12_INPUT_ELEMENT_DESC INPUT_ELEMENTS[]{
         /* InstanceDataStepRate = */ 0,
     },
     D3D12_INPUT_ELEMENT_DESC{
-        /* SemanticName         = */ "TEXCOORD",
+        /* SemanticName         = */ "NORMAL",
         /* SemanticIndex        = */ 0,
-        /* Format               = */ DXGI_FORMAT_R32G32_FLOAT,
+        /* Format               = */ DXGI_FORMAT_R32G32B32_FLOAT,
         /* InputSlot            = */ 0,
         /* AlignedByteOffset    = */ 12,
         /* InputSlotClass       = */ D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
@@ -334,8 +334,9 @@ struct TransformUniform {
 };
 
 struct LightUniform {
-    Color objectColor;
-    Color lightColor;
+    Vector4 lightPos;
+    Color   objectColor;
+    Color   lightColor;
 };
 
 auto Application::update(float deltaTime) -> void {
@@ -363,6 +364,7 @@ auto Application::update(float deltaTime) -> void {
     transform.projection = m_mainCamera.projection();
 
     LightUniform light;
+    light.lightPos    = {1.2f, 1.0f, 2.0f, 1.0f};
     light.lightColor  = {1.0f, 1.0f, 1.0f, 1.0f};
     light.objectColor = {1.0f, 0.5f, 0.31f, 1.0f};
 
@@ -386,10 +388,8 @@ auto Application::update(float deltaTime) -> void {
     m_commandBuffer.setScissorRect(0, 0, m_mainWindow.width(), m_mainWindow.height());
     m_commandBuffer.draw(static_cast<std::uint32_t>(std::size(VERTICES)));
 
-    transform.model = Matrix4(1.0f).translated(1.2f, 1.0f, 2.0f);
+    transform.model = Matrix4(1.0f).translated(light.lightPos);
     m_commandBuffer.setPipelineState(m_lightPipelineState);
-    m_commandBuffer.setPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    m_commandBuffer.setVertexBuffer(0, m_vertexBuffer);
 
     m_commandBuffer.setGraphicsConstantBuffer(0, 0, &transform, sizeof(transform));
     m_commandBuffer.setGraphicsConstantBuffer(0, 1, &light, sizeof(light));
