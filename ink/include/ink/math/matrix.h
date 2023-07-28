@@ -1804,6 +1804,35 @@ inline auto lookAt(Vector3 eye, Vector3 target, Vector3 up) noexcept -> Matrix4 
 }
 
 /// @brief
+///   Create a look at transform matrix. This is equivalent to lookTo(eye, target - eye, up).
+///
+/// @param eye
+///   Homogeneous coordinate eye position.
+/// @param target
+///   Homogeneous coordinate target position to look at. Must differ from @p eye.
+/// @param up
+///   Homogeneous coordinate camera up direction.
+///
+/// @return
+///   A 4x4 matrix that represents the look at transform.
+[[nodiscard]]
+inline auto lookAt(Vector4 eye, Vector4 target, Vector4 up) noexcept -> Matrix4 {
+    eye /= eye.w;
+    target /= target.w;
+
+    const Vector4 front = (target - eye).normalized();
+    const Vector4 right = cross(up, front).normalized();
+    const Vector4 upDir = cross(front, right);
+
+    return Matrix4{
+        Vector4{right.x, right.y, right.z, -dot(right, eye)},
+        Vector4{upDir.x, upDir.y, upDir.z, -dot(upDir, eye)},
+        Vector4{front.x, front.y, front.z, -dot(front, eye)},
+        Vector4{0, 0, 0, 1.0f},
+    };
+}
+
+/// @brief
 ///   Create a look at transform matrix. This is equivalent to lookAt(eye, eye + direction, up).
 /// @note
 ///   Left-hand coordinate is used.
@@ -1822,6 +1851,35 @@ inline auto lookTo(Vector3 eye, Vector3 direction, Vector3 up) noexcept -> Matri
     const Vector3 front = direction.normalized();
     const Vector3 right = cross(up, front).normalized();
     const Vector3 upDir = cross(front, right);
+
+    return Matrix4{
+        Vector4{right.x, right.y, right.z, -dot(right, eye)},
+        Vector4{upDir.x, upDir.y, upDir.z, -dot(upDir, eye)},
+        Vector4{front.x, front.y, front.z, -dot(front, eye)},
+        Vector4{0, 0, 0, 1.0f},
+    };
+}
+
+/// @brief
+///   Create a look at transform matrix. This is equivalent to lookAt(eye, eye + direction, up).
+/// @note
+///   Left-hand coordinate is used.
+///
+/// @param eye
+///   Homogeneous coordinate eye position.
+/// @param direction
+///   The homogeneous coordinate direction to look to. Zero vector is not accepted.
+/// @param up
+///   Homogeneous coordinate camera up direction.
+///
+/// @return
+///   A 4x4 matrix that represents the look at transform.
+[[nodiscard]]
+inline auto lookTo(Vector4 eye, Vector4 direction, Vector4 up) noexcept -> Matrix4 {
+    eye /= eye.w;
+    const Vector4 front = direction.normalized();
+    const Vector4 right = cross(up, front).normalized();
+    const Vector4 upDir = cross(front, right);
 
     return Matrix4{
         Vector4{right.x, right.y, right.z, -dot(right, eye)},
