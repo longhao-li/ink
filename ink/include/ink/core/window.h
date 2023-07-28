@@ -4,42 +4,44 @@
 
 #include <Windows.h>
 
+#include <functional>
+
 namespace ink {
 
 enum class KeyCode {
     Undefined = -1,
 
     // Mouse buttons
-    MouseLeft   = VK_LBUTTON,
-    MouseRight  = VK_RBUTTON,
-    Break       = VK_CANCEL,
-    MouseMiddle = VK_MBUTTON,
-    MouseX1     = VK_XBUTTON1,
-    MouseX2     = VK_XBUTTON2,
+    MouseLeft   = 0x01,
+    MouseRight  = 0x02,
+    Break       = 0x03,
+    MouseMiddle = 0x04,
+    MouseX1     = 0x05,
+    MouseX2     = 0x06,
 
-    Backspace   = VK_BACK,
-    Tab         = VK_TAB,
-    Clear       = VK_CLEAR,
-    Enter       = VK_RETURN,
-    Pause       = VK_PAUSE,
-    CapsLock    = VK_CAPITAL,
-    Escape      = VK_ESCAPE,
-    Space       = VK_SPACE,
-    PageUp      = VK_PRIOR,
-    PageDown    = VK_NEXT,
-    End         = VK_END,
-    Home        = VK_HOME,
-    Left        = VK_LEFT,
-    Up          = VK_UP,
-    Right       = VK_RIGHT,
-    Down        = VK_DOWN,
-    Select      = VK_SELECT,
-    Print       = VK_PRINT,
-    Execute     = VK_EXECUTE,
-    PrintScreen = VK_SNAPSHOT,
-    Insert      = VK_INSERT,
-    Delete      = VK_DELETE,
-    Help        = VK_HELP,
+    Backspace   = 0x08,
+    Tab         = 0x09,
+    Clear       = 0x0C,
+    Enter       = 0x0D,
+    Pause       = 0x13,
+    CapsLock    = 0x14,
+    Escape      = 0x1B,
+    Space       = 0x20,
+    PageUp      = 0x21,
+    PageDown    = 0x22,
+    End         = 0x23,
+    Home        = 0x24,
+    Left        = 0x25,
+    Up          = 0x26,
+    Right       = 0x27,
+    Down        = 0x28,
+    Select      = 0x29,
+    Print       = 0x2A,
+    Execute     = 0x2B,
+    PrintScreen = 0x2C,
+    Insert      = 0x2D,
+    Delete      = 0x2E,
+    Help        = 0x2F,
 
     // Digits
     Digit0 = 0x30,
@@ -81,73 +83,73 @@ enum class KeyCode {
     Y = 0x59,
     Z = 0x5A,
 
-    LeftSuper   = VK_LWIN,
-    RightSuper  = VK_RWIN,
-    ContextMenu = VK_APPS,
-    Sleep       = VK_SLEEP,
+    LeftSuper   = 0x5B,
+    RightSuper  = 0x5C,
+    ContextMenu = 0x5D,
+    Sleep       = 0x5F,
 
     // Keypad keys
-    Keypad0  = VK_NUMPAD0,
-    Keypad1  = VK_NUMPAD1,
-    Keypad2  = VK_NUMPAD2,
-    Keypad3  = VK_NUMPAD3,
-    Keypad4  = VK_NUMPAD4,
-    Keypad5  = VK_NUMPAD5,
-    Keypad6  = VK_NUMPAD6,
-    Keypad7  = VK_NUMPAD7,
-    Keypad8  = VK_NUMPAD8,
-    Keypad9  = VK_NUMPAD9,
-    Multiply = VK_MULTIPLY, // Keypad *
-    Add      = VK_ADD,      // Keypad +
-    Subtract = VK_SUBTRACT, // Keypad -
-    Decimal  = VK_DECIMAL,  // Keypad .
-    Divide   = VK_DIVIDE,   // Keypad /
+    Keypad0  = 0x60,
+    Keypad1  = 0x61,
+    Keypad2  = 0x62,
+    Keypad3  = 0x63,
+    Keypad4  = 0x64,
+    Keypad5  = 0x65,
+    Keypad6  = 0x66,
+    Keypad7  = 0x67,
+    Keypad8  = 0x68,
+    Keypad9  = 0x69,
+    Multiply = 0x6A, // Keypad *
+    Add      = 0x6B, // Keypad +
+    Subtract = 0x6D, // Keypad -
+    Decimal  = 0x6E, // Keypad .
+    Divide   = 0x6F, // Keypad /
 
-    F1  = VK_F1,
-    F2  = VK_F2,
-    F3  = VK_F3,
-    F4  = VK_F4,
-    F5  = VK_F5,
-    F6  = VK_F6,
-    F7  = VK_F7,
-    F8  = VK_F8,
-    F9  = VK_F9,
-    F10 = VK_F10,
-    F11 = VK_F11,
-    F12 = VK_F12,
-    F13 = VK_F13,
-    F14 = VK_F14,
-    F15 = VK_F15,
-    F16 = VK_F16,
-    F17 = VK_F17,
-    F18 = VK_F18,
-    F19 = VK_F19,
-    F20 = VK_F20,
-    F21 = VK_F21,
-    F22 = VK_F22,
-    F23 = VK_F23,
-    F24 = VK_F24,
+    F1  = 0x70,
+    F2  = 0x71,
+    F3  = 0x72,
+    F4  = 0x73,
+    F5  = 0x74,
+    F6  = 0x75,
+    F7  = 0x76,
+    F8  = 0x77,
+    F9  = 0x78,
+    F10 = 0x79,
+    F11 = 0x7A,
+    F12 = 0x7B,
+    F13 = 0x7C,
+    F14 = 0x7D,
+    F15 = 0x7E,
+    F16 = 0x7F,
+    F17 = 0x80,
+    F18 = 0x81,
+    F19 = 0x82,
+    F20 = 0x83,
+    F21 = 0x84,
+    F22 = 0x85,
+    F23 = 0x86,
+    F24 = 0x87,
 
-    NumLock    = VK_NUMLOCK,
-    ScrollLock = VK_SCROLL,
-    LeftShift  = VK_LSHIFT,
-    RightShift = VK_RSHIFT,
-    LeftCtrl   = VK_LCONTROL,
-    RightCtrl  = VK_RCONTROL,
-    LeftAlt    = VK_LMENU,
-    RightAlt   = VK_RMENU,
+    NumLock    = 0x90,
+    ScrollLock = 0x91,
+    LeftShift  = 0xA0,
+    RightShift = 0xA1,
+    LeftCtrl   = 0xA2,
+    RightCtrl  = 0xA3,
+    LeftAlt    = 0xA4,
+    RightAlt   = 0xA5,
 
-    Semicolon    = VK_OEM_1,      // ; :
-    Equal        = VK_OEM_PLUS,   // = +
-    Comma        = VK_OEM_COMMA,  // , <
-    Minus        = VK_OEM_MINUS,  // - _
-    Period       = VK_OEM_PERIOD, // . >
-    Slash        = VK_OEM_2,      // / ?
-    BackQuote    = VK_OEM_3,      // ` ~
-    LeftBracket  = VK_OEM_4,      // [ {
-    BackSlash    = VK_OEM_5,      // \ |
-    RightBracket = VK_OEM_6,      // ] }
-    Quote        = VK_OEM_7,      // ' "
+    Semicolon    = 0xBA, // ; :
+    Equal        = 0xBB, // = +
+    Comma        = 0xBC, // , <
+    Minus        = 0xBD, // - _
+    Period       = 0xBE, // . >
+    Slash        = 0xBF, // / ?
+    BackQuote    = 0xC0, // ` ~
+    LeftBracket  = 0xDB, // [ {
+    BackSlash    = 0xDC, // \ |
+    RightBracket = 0xDD, // ] }
+    Quote        = 0xDE, // ' "
 };
 
 enum class KeyAction {
@@ -371,106 +373,175 @@ public:
     }
 
     /// @brief
-    ///   Focus change callback for this window. This method is called when the window focus status
-    ///   is changed.
+    ///   Set window focus callback.
     ///
-    /// @param focused
-    ///   Specifies whether this window gained or lost focus.
-    InkApi virtual auto onFocus(bool focused) -> void;
-
-    /// @brief
-    ///   Close callback for this window. This method is called before this window is closed. This
-    ///   callback may be used to release resources that should be freed before window destroy.
-    InkApi virtual auto onClose() -> void;
-
-    /// @brief
-    ///   Character callback for this window. This method is called when this window receives a
-    ///   character.
+    /// @tparam Func
+    ///   Type of the window focus callback. Should be like auto()(bool focused) -> void.
     ///
-    /// @param codePoint
-    ///   The character unicode code point.
-    InkApi virtual auto onChar(char32_t codePoint) -> void;
+    /// @param callback
+    ///   The focus callback function.
+    template <typename Func, typename = std::enable_if_t<std::is_invocable_r_v<void, Func, bool>>>
+    auto setFocusCallback(Func &&callback) {
+        m_focusCallback = std::forward<Func>(callback);
+    }
 
     /// @brief
-    ///   Key and mouse button callback for this window. This method is called when keyboard key or
-    ///   mouse button status are changed.
+    ///   Set window close callback.
     ///
-    /// @param key
-    ///   The key whose status is changed.
-    /// @param action
-    ///   Specifies key action of the specified key.
-    /// @param mods
-    ///   Modifier keys that are pressed when the key status is changed.
-    InkApi virtual auto onKey(KeyCode key, KeyAction action, Modifier mods) -> void;
-
-    /// @brief
-    ///   Mouse move callback for this window. This callback is called when mouse is moved.
+    /// @tparam Func
+    ///   Type of the window focus callback. Should be like auto()(void) -> void.
     ///
-    /// @param x
-    ///   New x position of mouse.
-    /// @param y
-    ///   New y position of mouse.
-    InkApi virtual auto onMouseMove(std::int32_t x, std::int32_t y) -> void;
+    /// @param callback
+    ///   The close callback function.
+    template <typename Func, typename = std::enable_if_t<std::is_invocable_r_v<void, Func>>>
+    auto setCloseCallback(Func &&callback) -> void {
+        m_closeCallback = std::forward<Func>(callback);
+    }
 
     /// @brief
-    ///   Mouse wheel callback for this window. This callback is called when mouse wheels.
+    ///   Set window character input callback.
     ///
-    /// @param x
-    ///   X position of cursor.
-    /// @param y
-    ///   Y position of cursor.
-    /// @param deltaX
-    ///   Mouse wheel delta x.
-    /// @param deltaY
-    ///   Mouse wheel delta y.
-    /// @param mods
-    ///   Modifier keys that are pressed when mouse is wheeling.
-    InkApi virtual auto
-    onMouseWheel(std::int32_t x, std::int32_t y, float deltaX, float deltaY, Modifier mods) -> void;
-
-    /// @brief
-    ///   Window resize callback for this window. This callback is called if window size is changed.
+    /// @tparam Func
+    ///   Type of the window character input callback. Should be like auto()(char32_t codePoint) ->
+    ///   void.
     ///
-    /// @param width
-    ///   New client width of this window.
-    /// @param height
-    ///   New client height of this window.
-    InkApi virtual auto onResize(std::uint32_t width, std::uint32_t height) -> void;
+    /// @param callback
+    ///   The window character input callback function.
+    template <typename Func,
+              typename = std::enable_if_t<std::is_invocable_r_v<void, Func, char32_t>>>
+    auto setCharCallback(Func &&callback) -> void {
+        m_charCallback = std::forward<Func>(callback);
+    }
 
     /// @brief
-    ///   Window minimize callback for this window. This callback is called if window is minimized.
-    InkApi virtual auto onMinimize() -> void;
-
-    /// @brief
-    ///   Window maximize callback for this window. This callback is called if window is maximized.
-    InkApi virtual auto onMaximize() -> void;
-
-    /// @brief
-    ///   Window move callback for this window. This callback is called if window position is
-    ///   changed.
+    ///   Set window key event callback.
     ///
-    /// @param x
-    ///   New window x coordinate.
-    /// @param y
-    ///   New window y coordinate.
-    InkApi virtual auto onMove(std::int32_t x, std::int32_t y) -> void;
+    /// @tparam Func
+    ///   Type of the window key event callback. Should be like auto()(KeyCode key, KeyAction
+    ///   action, Modifier mods) -> void.
+    ///
+    /// @param callback
+    ///   The window key event callback function.
+    template <typename Func,
+              typename =
+                  std::enable_if_t<std::is_invocable_r_v<void, Func, KeyCode, KeyAction, Modifier>>>
+    auto setKeyCallback(Func &&callback) -> void {
+        m_keyCallback = std::forward<Func>(callback);
+    }
 
     /// @brief
-    ///   File drop callback for this window. This callback is called if user try to drop files to
-    ///   this window.
+    ///   Set mouse position callback.
     ///
-    /// @param x
-    ///   X coordinate of the cursor.
-    /// @param y
-    ///   Y coordinate of the cursor.
-    /// @param count
-    ///   Number of files dropped.
-    /// @param paths
-    ///   Paths of the files dropped to this window.
-    InkApi virtual auto
-    onFileDrop(std::int32_t x, std::int32_t y, std::size_t count, String paths[]) -> void;
+    /// @tparam Func
+    ///   Type of the mouse position callback. Should be like auto()(std::int32_t x, std::int32_t y)
+    ///   -> void.
+    ///
+    /// @param callback
+    ///   The mouse position callback function.
+    template <
+        typename Func,
+        typename = std::enable_if_t<std::is_invocable_r_v<void, Func, std::int32_t, std::int32_t>>>
+    auto setMousePositionCallback(Func &&callback) -> void {
+        m_mousePosCallback = std::forward<Func>(callback);
+    }
+
+    /// @brief
+    ///   Set mouse wheel callback.
+    ///
+    /// @tparam Func
+    ///   Type of the mouse wheel callback. Should be like auto()(std::int32_t x, std::int32_t y,
+    ///   float deltaX, float deltaY, Modifier mods) -> void.
+    ///
+    /// @param callback
+    ///   The mouse wheel callback function.
+    template <
+        typename Func,
+        typename = std::enable_if_t<
+            std::is_invocable_r_v<void, Func, std::int32_t, std::int32_t, float, float, Modifier>>>
+    auto setMouseWheelCallback(Func &&func) -> void {
+        m_mouseWheelCallback = std::forward<Func>(func);
+    }
+
+    /// @brief
+    ///   Set frame resize callback.
+    ///
+    /// @tparam Func
+    ///   Type of the frame resize callback. Should be like auto()(std::uint32_t width,
+    ///   std::uint32_t height) -> void.
+    ///
+    /// @param callback
+    ///   The frame resize callback function.
+    template <typename Func,
+              typename =
+                  std::enable_if_t<std::is_invocable_r_v<void, Func, std::uint32_t, std::uint32_t>>>
+    auto setFrameResizeCallback(Func &&func) -> void {
+        m_resizeCallback = std::forward<Func>(func);
+    }
+
+    /// @brief
+    ///   Set window minimize callback.
+    ///
+    /// @tparam Func
+    ///   Type of the window minimize callback. Should be like auto()() -> void.
+    ///
+    /// @param callback
+    ///   The window minimize callback function.
+    template <typename Func, typename = std::enable_if_t<std::is_invocable_r_v<void, Func>>>
+    auto setMinimizeCallback(Func &&func) -> void {
+        m_minimizeCallback = std::forward<Func>(func);
+    }
+
+    /// @brief
+    ///   Set window maximize callback.
+    ///
+    /// @tparam Func
+    ///   Type of the window maximize callback. Should be like auto()() -> void.
+    ///
+    /// @param callback
+    ///   The window maximize callback function.
+    template <typename Func, typename = std::enable_if_t<std::is_invocable_r_v<void, Func>>>
+    auto setMaximizeCallback(Func &&func) -> void {
+        m_maximizeCallback = std::forward<Func>(func);
+    }
+
+    /// @brief
+    ///   Set window position callback.
+    ///
+    /// @tparam Func
+    ///   Type of the window position callback. Should be like auto()(std::int32_t x, std::int32_t
+    ///   y) -> void.
+    ///
+    /// @param callback
+    ///   The window position callback function.
+    template <
+        typename Func,
+        typename = std::enable_if_t<std::is_invocable_r_v<void, Func, std::int32_t, std::int32_t>>>
+    auto setWindowPositionCallback(Func &&func) -> void {
+        m_windowPosCallback = std::forward<Func>(func);
+    }
+
+    /// @brief
+    ///   Set window file drop callback.
+    ///
+    /// @tparam Func
+    ///   Type of the window file drop callback. Should be like auto()(std::int32_t x, std::int32_t
+    ///   y, std::size_t count, String paths[]) -> void.
+    ///
+    /// @param callback
+    ///   The window file drop callback function.
+    template <
+        typename Func,
+        typename = std::enable_if_t<
+            std::is_invocable_r_v<void, Func, std::int32_t, std::int32_t, std::size_t, String[]>>>
+    auto setFileDropCallback(Func &&func) -> void {
+        m_fileDropCallback = std::forward<Func>(func);
+    }
 
     friend class SwapChain;
+
+    /// @brief
+    ///   Window message handler function.
+    InkApi static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 protected:
     /// @brief
@@ -482,10 +553,6 @@ protected:
     auto nativeHandle() const noexcept -> HWND {
         return m_hWnd;
     }
-
-    /// @brief
-    ///   Window message handler function.
-    InkApi static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 private:
     /// @brief
@@ -511,6 +578,50 @@ private:
     /// @brief
     ///   For internal usage. High surrogate for char message.
     WCHAR m_highSurrogate;
+
+    /// @brief
+    ///   Window focus callback.
+    std::function<void(bool)> m_focusCallback;
+
+    /// @brief
+    ///   Window close callback.
+    std::function<void()> m_closeCallback;
+
+    /// @brief
+    ///   Window character input callback.
+    std::function<void(char32_t)> m_charCallback;
+
+    /// @brief
+    ///   Window key and mouse event callback.
+    std::function<void(KeyCode, KeyAction, Modifier)> m_keyCallback;
+
+    /// @brief
+    ///   Mouse position callback.
+    std::function<void(std::int32_t, std::int32_t)> m_mousePosCallback;
+
+    /// @brief
+    ///   Mouse wheel callback.
+    std::function<void(std::int32_t, std::int32_t, float, float, Modifier)> m_mouseWheelCallback;
+
+    /// @brief
+    ///   Window client resize callback.
+    std::function<void(std::uint32_t, std::uint32_t)> m_resizeCallback;
+
+    /// @brief
+    ///   Window minimize callback.
+    std::function<void()> m_minimizeCallback;
+
+    /// @brief
+    ///   Window maximize callback.
+    std::function<void()> m_maximizeCallback;
+
+    /// @brief
+    ///   Window position callback.
+    std::function<void(std::int32_t, std::int32_t)> m_windowPosCallback;
+
+    /// @brief
+    ///   Window file drop callback.
+    std::function<void(std::int32_t, std::int32_t, std::size_t, String[])> m_fileDropCallback;
 };
 
 } // namespace ink

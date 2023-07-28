@@ -8,33 +8,6 @@ using namespace ink;
 
 namespace {
 
-/// @brief
-///   Window process function, for initialization usage only.
-/// @remark
-///   Initialization function is differ from normal window process function because some events may
-///   be sent during window initialization which may call some window virtual callback functions
-///   during construction.
-///
-/// @param hWnd
-///   The win32 window handle to deal with the message.
-/// @param uMsg
-///   The message to handle.
-/// @param wParam
-///   wParam of the message.
-/// @param lParam
-///   lParam of the message.
-///
-/// @return
-///   An integer that indicates the message handle result.
-LRESULT CALLBACK windowInitializeProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) noexcept {
-    if (uMsg == WM_NCCREATE) {
-        auto cs = reinterpret_cast<CREATESTRUCTW *>(lParam);
-        SetWindowLongPtrW(hWnd, 0, reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
-    }
-
-    return DefWindowProcW(hWnd, uMsg, wParam, lParam);
-}
-
 class WindowClass {
 private:
     /// @brief
@@ -43,7 +16,7 @@ private:
         const WNDCLASSEXW clsEx{
             /* cbSize        = */ sizeof(WNDCLASSEX),
             /* style         = */ CS_HREDRAW | CS_VREDRAW,
-            /* lpfnWndProc   = */ windowInitializeProc,
+            /* lpfnWndProc   = */ ink::Window::windowProc,
             /* cbClsExtra    = */ 0,
             /* cbWndExtra    = */ sizeof(void *),
             /* hInstance     = */ m_hInstance,
@@ -134,7 +107,18 @@ ink::Window::Window(StringView    title,
       m_title(title),
       m_width(width),
       m_height(height),
-      m_highSurrogate() {
+      m_highSurrogate(),
+      m_focusCallback(),
+      m_closeCallback(),
+      m_charCallback(),
+      m_keyCallback(),
+      m_mousePosCallback(),
+      m_mouseWheelCallback(),
+      m_resizeCallback(),
+      m_minimizeCallback(),
+      m_maximizeCallback(),
+      m_windowPosCallback(),
+      m_fileDropCallback() {
     // Setup DPI awareness. It is safe to call for multi-times.
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
@@ -156,9 +140,6 @@ ink::Window::Window(StringView    title,
     // Show window.
     if ((style & WindowStyle::Visible) != WindowStyle::None)
         ShowWindow(m_hWnd, SW_SHOW);
-
-    // Change window process function.
-    SetWindowLongPtrW(m_hWnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(Window::windowProc));
 }
 
 #if !defined(__clang__) && defined(_MSC_VER)
@@ -210,58 +191,6 @@ auto ink::Window::center() noexcept -> void {
 
     SetWindowPos(m_hWnd, nullptr, x, y, -1, -1,
                  SWP_ASYNCWINDOWPOS | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-}
-
-auto ink::Window::onFocus(bool focused) -> void {
-    (void)focused;
-}
-
-auto ink::Window::onClose() -> void {}
-
-auto ink::Window::onChar(char32_t codePoint) -> void {
-    (void)codePoint;
-}
-
-auto ink::Window::onKey(KeyCode key, KeyAction action, Modifier mods) -> void {
-    (void)key;
-    (void)action;
-    (void)mods;
-}
-
-auto ink::Window::onMouseMove(std::int32_t x, std::int32_t y) -> void {
-    (void)x;
-    (void)y;
-}
-
-auto ink::Window::onMouseWheel(
-    std::int32_t x, std::int32_t y, float deltaX, float deltaY, Modifier mods) -> void {
-    (void)x;
-    (void)y;
-    (void)deltaX;
-    (void)deltaY;
-    (void)mods;
-}
-
-auto ink::Window::onResize(std::uint32_t width, std::uint32_t height) -> void {
-    (void)width;
-    (void)height;
-}
-
-auto ink::Window::onMinimize() -> void {}
-
-auto ink::Window::onMaximize() -> void {}
-
-auto ink::Window::onMove(std::int32_t x, std::int32_t y) -> void {
-    (void)x;
-    (void)y;
-}
-
-auto ink::Window::onFileDrop(std::int32_t x, std::int32_t y, std::size_t count, String paths[])
-    -> void {
-    (void)x;
-    (void)y;
-    (void)count;
-    (void)paths;
 }
 
 namespace {
@@ -390,15 +319,18 @@ LRESULT ink::Window::windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
     }
 
     case WM_SETFOCUS:
-        window->onFocus(true);
+        if (window->m_focusCallback)
+            window->m_focusCallback(true);
         return 0;
 
     case WM_KILLFOCUS:
-        window->onFocus(false);
+        if (window->m_focusCallback)
+            window->m_focusCallback(false);
         return 0;
 
     case WM_CLOSE:
-        window->onClose();
+        if (window->m_closeCallback)
+            window->m_closeCallback();
         DestroyWindow(hWnd);
         window->m_hWnd = nullptr;
         return 0;
@@ -410,21 +342,23 @@ LRESULT ink::Window::windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             // High surrogate.
             window->m_highSurrogate = static_cast<WCHAR>(wParam);
         } else {
-            char32_t codePoint = 0;
-            if (wParam >= 0xDC00 && wParam <= 0xDFFF) {
-                if (window->m_highSurrogate) {
-                    codePoint += (window->m_highSurrogate - 0xD800) << 10;
-                    codePoint += static_cast<WCHAR>(wParam) - 0xDC00;
-                    codePoint += 0x10000;
+            if (window->m_charCallback) {
+                char32_t codePoint = 0;
+                if (wParam >= 0xDC00 && wParam <= 0xDFFF) {
+                    if (window->m_highSurrogate) {
+                        codePoint += (window->m_highSurrogate - 0xD800) << 10;
+                        codePoint += static_cast<WCHAR>(wParam) - 0xDC00;
+                        codePoint += 0x10000;
+                    }
+                } else {
+                    codePoint = static_cast<WCHAR>(wParam);
                 }
-            } else {
-                codePoint = static_cast<WCHAR>(wParam);
+
+                // Handle char callback.
+                window->m_charCallback(codePoint);
             }
 
             window->m_highSurrogate = 0;
-
-            // Handle char callback.
-            window->onChar(codePoint);
         }
 
         return 0;
@@ -433,7 +367,9 @@ LRESULT ink::Window::windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
         if (wParam == UNICODE_NOCHAR)
             return TRUE;
 
-        window->onChar(static_cast<char32_t>(wParam));
+        if (window->m_charCallback)
+            window->m_charCallback(static_cast<char32_t>(wParam));
+
         return 0;
 
     case WM_KEYDOWN:
@@ -442,152 +378,167 @@ LRESULT ink::Window::windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
         [[fallthrough]];
     case WM_KEYUP:
         [[fallthrough]];
-    case WM_SYSKEYUP: {
-        const auto action = (HIWORD(lParam) & KF_UP) ? KeyAction::Release : KeyAction::Press;
-        const auto mods   = modifiers();
+    case WM_SYSKEYUP:
+        if (window->m_keyCallback) {
+            const auto action = (HIWORD(lParam) & KF_UP) ? KeyAction::Release : KeyAction::Press;
+            const auto mods   = modifiers();
 
-        KeyCode key;
+            KeyCode key;
 
-        UINT scanCode = (lParam & 0x00FF0000) >> 16;
-        bool extended = (lParam & 0x01000000) != 0;
+            UINT scanCode = (lParam & 0x00FF0000) >> 16;
+            bool extended = (lParam & 0x01000000) != 0;
 
-        switch (wParam) {
-        case VK_SHIFT:
-            key = KEY_CODE_MAP[MapVirtualKey(scanCode, MAPVK_VSC_TO_VK_EX)];
-            break;
+            switch (wParam) {
+            case VK_SHIFT:
+                key = KEY_CODE_MAP[MapVirtualKey(scanCode, MAPVK_VSC_TO_VK_EX)];
+                break;
 
-        case VK_CONTROL:
-            key = extended ? KeyCode::RightCtrl : KeyCode::LeftCtrl;
-            break;
+            case VK_CONTROL:
+                key = extended ? KeyCode::RightCtrl : KeyCode::LeftCtrl;
+                break;
 
-        case VK_MENU:
-            key = extended ? KeyCode::RightAlt : KeyCode::LeftAlt;
-            break;
+            case VK_MENU:
+                key = extended ? KeyCode::RightAlt : KeyCode::LeftAlt;
+                break;
 
-        default:
-            key = KEY_CODE_MAP[wParam];
-            break;
+            default:
+                key = KEY_CODE_MAP[wParam];
+                break;
+            }
+
+            window->m_keyCallback(key, action, mods);
         }
-
-        window->onKey(key, action, mods);
         return 0;
-    }
 
     case WM_LBUTTONDOWN:
-        window->onKey(KeyCode::MouseLeft, KeyAction::Press, modifiers());
+        if (window->m_keyCallback)
+            window->m_keyCallback(KeyCode::MouseLeft, KeyAction::Press, modifiers());
         return 0;
 
     case WM_LBUTTONUP:
-        window->onKey(KeyCode::MouseLeft, KeyAction::Release, modifiers());
+        if (window->m_keyCallback)
+            window->m_keyCallback(KeyCode::MouseLeft, KeyAction::Release, modifiers());
         return 0;
 
     case WM_RBUTTONDOWN:
-        window->onKey(KeyCode::MouseRight, KeyAction::Press, modifiers());
+        if (window->m_keyCallback)
+            window->m_keyCallback(KeyCode::MouseRight, KeyAction::Press, modifiers());
         return 0;
 
     case WM_RBUTTONUP:
-        window->onKey(KeyCode::MouseRight, KeyAction::Release, modifiers());
+        if (window->m_keyCallback)
+            window->m_keyCallback(KeyCode::MouseRight, KeyAction::Release, modifiers());
         return 0;
 
     case WM_MBUTTONDOWN:
-        window->onKey(KeyCode::MouseMiddle, KeyAction::Press, modifiers());
+        if (window->m_keyCallback)
+            window->m_keyCallback(KeyCode::MouseMiddle, KeyAction::Press, modifiers());
         return 0;
 
     case WM_MBUTTONUP:
-        window->onKey(KeyCode::MouseMiddle, KeyAction::Release, modifiers());
+        if (window->m_keyCallback)
+            window->m_keyCallback(KeyCode::MouseMiddle, KeyAction::Release, modifiers());
         return 0;
 
-    case WM_XBUTTONDOWN: {
-        const KeyCode key =
-            (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? KeyCode::MouseX1 : KeyCode::MouseX2;
-        window->onKey(key, KeyAction::Press, modifiers());
-        return TRUE;
-    }
-
-    case WM_XBUTTONUP: {
-        const KeyCode key =
-            (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? KeyCode::MouseX1 : KeyCode::MouseX2;
-        window->onKey(key, KeyAction::Release, modifiers());
-        return TRUE;
-    }
-
-    case WM_MOUSEMOVE: {
-        const std::int32_t x = GET_X_LPARAM(lParam);
-        const std::int32_t y = GET_Y_LPARAM(lParam);
-
-        window->onMouseMove(x, y);
-        return 0;
-    }
-
-    case WM_MOUSEWHEEL: {
-        const std::int32_t delta = GET_WHEEL_DELTA_WPARAM(wParam);
-        const std::int32_t x     = GET_X_LPARAM(lParam);
-        const std::int32_t y     = GET_Y_LPARAM(lParam);
-        const auto         mods  = modifiers();
-
-        window->onMouseWheel(x, y, 0, static_cast<float>(delta) / float(WHEEL_DELTA), mods);
-        return 0;
-    }
-
-    case WM_MOUSEHWHEEL: {
-        const std::int32_t delta = GET_WHEEL_DELTA_WPARAM(wParam);
-        const std::int32_t x     = GET_X_LPARAM(lParam);
-        const std::int32_t y     = GET_Y_LPARAM(lParam);
-        const auto         mods  = modifiers();
-
-        window->onMouseWheel(x, y, static_cast<float>(delta) / float(WHEEL_DELTA), 0, mods);
-        return 0;
-    }
-
-    case WM_SIZE: {
-        const std::uint32_t width  = LOWORD(lParam);
-        const std::uint32_t height = HIWORD(lParam);
-
-        if (wParam == SIZE_MINIMIZED)
-            window->onMinimize();
-        else if (wParam == SIZE_MAXIMIZED)
-            window->onMaximize();
-
-        window->onResize(width, height);
-        return 0;
-    }
-
-    case WM_MOVE: {
-        const std::int32_t x = GET_X_LPARAM(lParam);
-        const std::int32_t y = GET_Y_LPARAM(lParam);
-
-        window->onMove(x, y);
-        return 0;
-    }
-
-    case WM_DROPFILES: {
-        HDROP drop = reinterpret_cast<HDROP>(wParam);
-
-        const std::size_t fileCount = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
-
-        std::vector<String> paths;
-        paths.reserve(fileCount);
-
-        // Query drop point.
-        POINT point;
-        DragQueryPoint(drop, &point);
-
-        // Parse file paths.
-        for (std::uint32_t i = 0; i < fileCount; ++i) {
-            const std::uint32_t pathLength = DragQueryFileW(drop, i, nullptr, 0);
-
-            String path;
-            path.resize(pathLength);
-            DragQueryFileW(drop, i, reinterpret_cast<LPWSTR>(path.data()), pathLength);
-
-            paths.push_back(std::move(path));
+    case WM_XBUTTONDOWN:
+        if (window->m_keyCallback) {
+            const KeyCode key =
+                (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? KeyCode::MouseX1 : KeyCode::MouseX2;
+            window->m_keyCallback(key, KeyAction::Press, modifiers());
         }
+        return TRUE;
 
-        window->onFileDrop(point.x, point.y, fileCount, paths.data());
-        DragFinish(drop);
+    case WM_XBUTTONUP:
+        if (window->m_keyCallback) {
+            const KeyCode key =
+                (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? KeyCode::MouseX1 : KeyCode::MouseX2;
+            window->m_keyCallback(key, KeyAction::Release, modifiers());
+        }
+        return TRUE;
 
+    case WM_MOUSEMOVE:
+        if (window->m_mousePosCallback) {
+            const std::int32_t x = GET_X_LPARAM(lParam);
+            const std::int32_t y = GET_Y_LPARAM(lParam);
+
+            window->m_mousePosCallback(x, y);
+        }
         return 0;
-    }
+
+    case WM_MOUSEWHEEL:
+        if (window->m_mouseWheelCallback) {
+            const std::int32_t delta = GET_WHEEL_DELTA_WPARAM(wParam);
+            const std::int32_t x     = GET_X_LPARAM(lParam);
+            const std::int32_t y     = GET_Y_LPARAM(lParam);
+            const auto         mods  = modifiers();
+
+            window->m_mouseWheelCallback(x, y, 0, static_cast<float>(delta) / float(WHEEL_DELTA),
+                                         mods);
+        }
+        return 0;
+
+    case WM_MOUSEHWHEEL:
+        if (window->m_mouseWheelCallback) {
+            const std::int32_t delta = GET_WHEEL_DELTA_WPARAM(wParam);
+            const std::int32_t x     = GET_X_LPARAM(lParam);
+            const std::int32_t y     = GET_Y_LPARAM(lParam);
+            const auto         mods  = modifiers();
+
+            window->m_mouseWheelCallback(x, y, static_cast<float>(delta) / float(WHEEL_DELTA), 0,
+                                         mods);
+        }
+        return 0;
+
+    case WM_SIZE:
+        if (wParam == SIZE_MINIMIZED && window->m_minimizeCallback)
+            window->m_minimizeCallback();
+        else if (wParam == SIZE_MAXIMIZED && window->m_maximizeCallback)
+            window->m_maximizeCallback();
+        if (window->m_resizeCallback) {
+            const std::uint32_t width  = LOWORD(lParam);
+            const std::uint32_t height = HIWORD(lParam);
+
+            window->m_resizeCallback(width, height);
+        }
+        return 0;
+
+    case WM_MOVE:
+        if (window->m_windowPosCallback) {
+            const std::int32_t x = GET_X_LPARAM(lParam);
+            const std::int32_t y = GET_Y_LPARAM(lParam);
+
+            window->m_windowPosCallback(x, y);
+        }
+        return 0;
+
+    case WM_DROPFILES:
+        if (window->m_fileDropCallback) {
+            HDROP drop = reinterpret_cast<HDROP>(wParam);
+
+            const std::size_t fileCount = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+
+            std::vector<String> paths;
+            paths.reserve(fileCount);
+
+            // Query drop point.
+            POINT point;
+            DragQueryPoint(drop, &point);
+
+            // Parse file paths.
+            for (std::uint32_t i = 0; i < fileCount; ++i) {
+                const std::uint32_t pathLength = DragQueryFileW(drop, i, nullptr, 0);
+
+                String path;
+                path.resize(pathLength);
+                DragQueryFileW(drop, i, reinterpret_cast<LPWSTR>(path.data()), pathLength);
+
+                paths.push_back(std::move(path));
+            }
+
+            window->m_fileDropCallback(point.x, point.y, fileCount, paths.data());
+            DragFinish(drop);
+        }
+        return 0;
     }
 
     return DefWindowProcW(hWnd, uMsg, wParam, lParam);
