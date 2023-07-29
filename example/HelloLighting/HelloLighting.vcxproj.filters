@@ -7,6 +7,9 @@
     <Filter Include="src">
       <UniqueIdentifier>{9e6aa1ed-8ccd-4899-a81b-e57135ab6232}</UniqueIdentifier>
     </Filter>
+    <Filter Include="asset">
+      <UniqueIdentifier>{cda9fcfb-d63d-431f-a2f8-862c9eace51d}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.cpp">
@@ -29,5 +32,13 @@
   </ItemGroup>
   <ItemGroup>
     <None Include=".clang-format" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="asset\diffuse.png">
+      <Filter>asset</Filter>
+    </Image>
+    <Image Include="asset\specular.png">
+      <Filter>asset</Filter>
+    </Image>
   </ItemGroup>
 </Project>

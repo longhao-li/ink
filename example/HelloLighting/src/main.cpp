@@ -1,3 +1,4 @@
+#include <ink/asset/image.h>
 #include <ink/core/log.h>
 #include <ink/core/window.h>
 #include <ink/math/number.h>
@@ -17,20 +18,16 @@ class Camera {
 public:
     Camera() noexcept = default;
 
-    auto rotate(float pitch, float roll) noexcept -> void {
-        m_pitch += pitch;
-        m_roll += roll;
-        m_pitch = std::clamp(m_pitch, -Pi<float> * 0.45f, Pi<float> * 0.45f);
-        m_roll  = std::fmod(m_roll, Pi<float> * 2.0f);
-
+    auto rotate(float pitch, float yaw) noexcept -> void {
+        Quaternion rot(pitch, yaw, 0.0f);
+        m_rotation *= rot;
         m_isLookAtDirty = true;
     }
 
     [[nodiscard]]
     auto forward() const noexcept -> Vector4 {
-        Quaternion rotation(m_pitch, m_roll, 0.0f);
         Quaternion direction(0.0f, 0.0f, 0.0f, 1.0f);
-        direction = rotation * direction * rotation.conjugated();
+        direction = m_rotation * direction * m_rotation.conjugated();
         return Vector4(direction.x, direction.y, direction.z, 0.0f).normalized();
     }
 
@@ -49,9 +46,8 @@ public:
         if (!m_isLookAtDirty)
             return m_lookAt;
 
-        Quaternion rotation(m_pitch, m_roll, 0.0f);
         Quaternion direction(0.0f, 0.0f, 0.0f, 1.0f);
-        direction = rotation * direction * rotation.conjugated();
+        direction = m_rotation * direction * m_rotation.conjugated();
         Vector4 dir(direction.x, direction.y, direction.z, 0.0f);
         dir.normalize();
         m_lookAt        = ink::lookTo(m_position, dir, {0.0f, 1.0f, 0.0f, 0.0f});
@@ -123,8 +119,7 @@ public:
 private:
     mutable bool m_isLookAtDirty     = true;
     mutable bool m_isProjectionDirty = true;
-    float        m_pitch             = 0.0f;
-    float        m_roll              = 0.0f;
+    Quaternion   m_rotation          = {1.0f};
     float        m_fovY              = Pi<float> * 0.25f;
     float        m_aspectRatio       = 4.0f / 3.0f;
     float        m_zNear             = 0.1f;
@@ -138,35 +133,60 @@ private:
 struct Vertex {
     Vector3 position;
     Vector3 normal;
+    Vector2 texcoord;
 };
 
 constexpr Vertex VERTICES[] = {
-    {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}}, {{0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}},
-    {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}},   {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}},
-    {{-0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}},  {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}},
-    {{-0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},   {{0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-    {{0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},     {{0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-    {{-0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},    {{-0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-    {{-0.5f, 0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}},   {{-0.5f, 0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}},
-    {{-0.5f, -0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}}, {{-0.5f, -0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}},
-    {{-0.5f, -0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}},  {{-0.5f, 0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}},
-    {{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}},     {{0.5f, 0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},   {{0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, -0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}},    {{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{-0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}}, {{0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}},
-    {{0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}},   {{0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}},
-    {{-0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}},  {{-0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}},
-    {{-0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},   {{0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-    {{0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},     {{0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-    {{-0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},    {{-0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+    {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f}},
+    {{0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {1.0f, 0.0f}},
+    {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {1.0f, 1.0f}},
+    {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {1.0f, 1.0f}},
+    {{-0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f}},
+    {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f}},
+    {{-0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
+    {{0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
+    {{0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+    {{0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+    {{-0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+    {{-0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
+    {{-0.5f, 0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+    {{-0.5f, 0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
+    {{-0.5f, -0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+    {{-0.5f, -0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+    {{-0.5f, -0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+    {{-0.5f, 0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+    {{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+    {{0.5f, 0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
+    {{0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+    {{0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+    {{0.5f, -0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+    {{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+    {{-0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f}},
+    {{0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f}},
+    {{0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f}},
+    {{0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f}},
+    {{-0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
+    {{-0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f}},
+    {{-0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
+    {{0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
+    {{0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+    {{0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+    {{-0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+    {{-0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
 };
 
 class Application {
 public:
     Application() noexcept;
+    ~Application() noexcept;
 
     auto run() -> void;
     auto update(float deltaTime) -> void;
+
+    [[nodiscard]]
+    auto now() const noexcept -> float {
+        return m_time;
+    }
 
 private:
     Window                m_mainWindow;
@@ -178,6 +198,11 @@ private:
     CommandBuffer         m_commandBuffer;
     StructuredBuffer      m_vertexBuffer;
     Camera                m_mainCamera;
+    Texture2D             m_diffuseMap;
+    Texture2D             m_specularMap;
+    SamplerView           m_sampler;
+
+    float m_time;
 };
 
 constexpr D3D12_INPUT_ELEMENT_DESC INPUT_ELEMENTS[]{
@@ -199,6 +224,15 @@ constexpr D3D12_INPUT_ELEMENT_DESC INPUT_ELEMENTS[]{
         /* InputSlotClass       = */ D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
         /* InstanceDataStepRate = */ 0,
     },
+    D3D12_INPUT_ELEMENT_DESC{
+        /* SemanticName         = */ "TEXCOORD",
+        /* SemanticIndex        = */ 0,
+        /* Format               = */ DXGI_FORMAT_R32G32_FLOAT,
+        /* InputSlot            = */ 0,
+        /* AlignedByteOffset    = */ 24,
+        /* InputSlotClass       = */ D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+        /* InstanceDataStepRate = */ 0,
+    },
 };
 
 Application::Application() noexcept
@@ -210,16 +244,51 @@ Application::Application() noexcept
       m_lightPipelineState(),
       m_commandBuffer(),
       m_vertexBuffer(std::uint32_t(std::size(VERTICES)), sizeof(Vertex)),
-      m_mainCamera() {
+      m_mainCamera(),
+      m_diffuseMap(),
+      m_specularMap(),
+      m_sampler(),
+      m_time() {
     { // Upload to GPU buffer.
+        Image diffuseMap;
+        if (!diffuseMap.load(u"asset/diffuse.png")) {
+            logFatal(u"Failed to load diffuse map.");
+            std::terminate();
+        }
+
+        m_diffuseMap =
+            Texture2D(diffuseMap.width(), diffuseMap.height(), diffuseMap.pixelFormat(), 1);
+
+        Image specularMap;
+        if (!specularMap.load(u"asset/specular.png")) {
+            logFatal(u"Failed to load specular map.");
+            std::terminate();
+        }
+
+        m_specularMap =
+            Texture2D(specularMap.width(), specularMap.height(), specularMap.pixelFormat(), 1);
+
         m_commandBuffer.transition(m_vertexBuffer, D3D12_RESOURCE_STATE_COPY_DEST);
         m_commandBuffer.copyBuffer(VERTICES, m_vertexBuffer, 0, sizeof(VERTICES));
         m_commandBuffer.transition(m_vertexBuffer, D3D12_RESOURCE_STATE_GENERIC_READ);
+
+        m_commandBuffer.transition(m_diffuseMap, D3D12_RESOURCE_STATE_COPY_DEST);
+        m_commandBuffer.copyTexture(diffuseMap.data(), diffuseMap.pixelFormat(),
+                                    diffuseMap.rowPitch(), diffuseMap.width(), diffuseMap.height(),
+                                    m_diffuseMap, 0);
+        m_commandBuffer.transition(m_diffuseMap, D3D12_RESOURCE_STATE_GENERIC_READ);
+
+        m_commandBuffer.transition(m_specularMap, D3D12_RESOURCE_STATE_COPY_DEST);
+        m_commandBuffer.copyTexture(specularMap.data(), specularMap.pixelFormat(),
+                                    specularMap.rowPitch(), specularMap.width(),
+                                    specularMap.height(), m_specularMap, 0);
+        m_commandBuffer.transition(m_specularMap, D3D12_RESOURCE_STATE_GENERIC_READ);
+
         m_commandBuffer.submit();
     }
 
     { // Create root signature.
-        D3D12_ROOT_PARAMETER parameters[1]{};
+        D3D12_ROOT_PARAMETER parameters[2]{};
 
         D3D12_DESCRIPTOR_RANGE viewRanges[]{
             D3D12_DESCRIPTOR_RANGE{
@@ -229,14 +298,34 @@ Application::Application() noexcept
                 /* RegisterSpace                     = */ 0,
                 /* OffsetInDescriptorsFromTableStart = */ 0,
             },
-        };
+            D3D12_DESCRIPTOR_RANGE{
+                /* RangeType                         = */ D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+                /* NumDescriptors                    = */ 2,
+                /* BaseShaderRegister                = */ 0,
+                /* RegisterSpace                     = */ 0,
+                /* OffsetInDescriptorsFromTableStart = */ 2,
+            }};
         parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
         parameters[0].DescriptorTable.NumDescriptorRanges = UINT(std::size(viewRanges));
         parameters[0].DescriptorTable.pDescriptorRanges   = viewRanges;
         parameters[0].ShaderVisibility                    = D3D12_SHADER_VISIBILITY_ALL;
 
+        D3D12_DESCRIPTOR_RANGE samplerRanges[]{
+            D3D12_DESCRIPTOR_RANGE{
+                /* RangeType                         = */ D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER,
+                /* NumDescriptors                    = */ 1,
+                /* BaseShaderRegister                = */ 0,
+                /* RegisterSpace                     = */ 0,
+                /* OffsetInDescriptorsFromTableStart = */ 0,
+            },
+        };
+        parameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        parameters[1].DescriptorTable.NumDescriptorRanges = UINT(std::size(samplerRanges));
+        parameters[1].DescriptorTable.pDescriptorRanges   = samplerRanges;
+        parameters[1].ShaderVisibility                    = D3D12_SHADER_VISIBILITY_ALL;
+
         D3D12_ROOT_SIGNATURE_DESC desc{
-            /* NumParameters     = */ 1,
+            /* NumParameters     = */ static_cast<UINT>(std::size(parameters)),
             /* pParameters       = */ parameters,
             /* NumStaticSamplers = */ 0,
             /* pStaticSamplers   = */ nullptr,
@@ -307,8 +396,27 @@ Application::Application() noexcept
         m_lightPipelineState = GraphicsPipelineState(desc);
     }
 
+    { // Create sampler.
+        D3D12_SAMPLER_DESC desc{};
+        desc.Filter         = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+        desc.AddressU       = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        desc.AddressV       = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        desc.AddressW       = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        desc.MipLODBias     = 0;
+        desc.MaxAnisotropy  = 16;
+        desc.ComparisonFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+        desc.MinLOD         = 0.0f;
+        desc.MaxLOD         = D3D12_FLOAT32_MAX;
+
+        m_sampler.initSampler(desc);
+    }
+
     // Set swap chain back buffer clear color.
     m_swapChain.setClearColor(colors::Black);
+}
+
+Application::~Application() noexcept {
+    RenderDevice::singleton().sync();
 }
 
 auto Application::run() -> void {
@@ -317,6 +425,7 @@ auto Application::run() -> void {
     QueryPerformanceCounter(&now);
     const double timeCoef = 1.0 / static_cast<double>(countsPerSec.QuadPart);
     lastUpdate            = now;
+    m_time                = static_cast<float>(static_cast<double>(now.QuadPart) * timeCoef);
 
     MSG msg{};
     while (!m_mainWindow.isClosed()) {
@@ -326,6 +435,7 @@ auto Application::run() -> void {
         } else {
             QueryPerformanceCounter(&now);
             double deltaTime = static_cast<double>(now.QuadPart - lastUpdate.QuadPart) * timeCoef;
+            m_time           = static_cast<float>(static_cast<double>(now.QuadPart) * timeCoef);
             this->update(static_cast<float>(deltaTime));
             lastUpdate = now;
         }
@@ -334,19 +444,26 @@ auto Application::run() -> void {
 
 struct TransformUniform {
     Matrix4 model;
+    Matrix4 inverseModel;
     Matrix4 view;
     Matrix4 projection;
 };
 
 struct LightUniform {
     Vector4 cameraPos;
-    Vector4 lightPos;
-    Color   objectColor;
-    Color   lightColor;
+    struct {
+        Vector4 position;
+        Color   ambient;
+        Color   diffuse;
+        Color   specular;
+    } light;
+    float shininess;
 };
 
 auto Application::update(float deltaTime) -> void {
     // Update camera.
+    if (isKeyPressed(KeyCode::Escape))
+        m_mainWindow.close();
     if (isKeyPressed(KeyCode::W))
         m_mainCamera.move(m_mainCamera.forward() * deltaTime);
     if (isKeyPressed(KeyCode::A))
@@ -365,15 +482,23 @@ auto Application::update(float deltaTime) -> void {
         m_mainCamera.rotate(0, deltaTime);
 
     TransformUniform transform;
-    transform.model      = Matrix4(1.0f);
-    transform.view       = m_mainCamera.view();
-    transform.projection = m_mainCamera.projection();
+    transform.model        = Matrix4(1.0f);
+    transform.inverseModel = transform.model.inversed().transposed();
+    transform.view         = m_mainCamera.view();
+    transform.projection   = m_mainCamera.projection();
+
+    Matrix4 lightTransform(1.0f);
+    lightTransform.scale(0.2f, 0.2f, 0.2f)
+        .translate(1.2f, 1.0f, -2.0f)
+        .rotate({0.0f, 1.0f, 0.0f}, this->now());
 
     LightUniform light;
-    light.cameraPos   = m_mainCamera.position();
-    light.lightPos    = {1.2f, 1.0f, 2.0f, 1.0f};
-    light.lightColor  = {1.0f, 1.0f, 1.0f, 1.0f};
-    light.objectColor = {1.0f, 0.5f, 0.31f, 1.0f};
+    light.cameraPos      = m_mainCamera.position();
+    light.light.position = Vector4(0.0f, 0.0f, 0.0f, 1.0f) * lightTransform;
+    light.light.ambient  = {0.2f, 0.2f, 0.2f, 1.0f};
+    light.light.diffuse  = {0.5f, 0.5f, 0.5f, 1.0f};
+    light.light.specular = {1.0f, 1.0f, 1.0f, 1.0f};
+    light.shininess      = 64.0f;
 
     auto &backBuffer = m_swapChain.backBuffer();
     m_commandBuffer.transition(backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET);
@@ -390,16 +515,24 @@ auto Application::update(float deltaTime) -> void {
 
     m_commandBuffer.setGraphicsConstantBuffer(0, 0, &transform, sizeof(transform));
     m_commandBuffer.setGraphicsConstantBuffer(0, 1, &light, sizeof(light));
+    m_commandBuffer.setGraphicsView(0, 2, m_diffuseMap.shaderResourceView());
+    m_commandBuffer.setGraphicsView(0, 3, m_specularMap.shaderResourceView());
+    m_commandBuffer.setGraphicsSampler(1, 0, m_sampler);
 
     m_commandBuffer.setViewport(0, 0, m_mainWindow.width(), m_mainWindow.height());
     m_commandBuffer.setScissorRect(0, 0, m_mainWindow.width(), m_mainWindow.height());
     m_commandBuffer.draw(static_cast<std::uint32_t>(std::size(VERTICES)));
 
-    transform.model = Matrix4(1.0f).translated(light.lightPos);
+    transform.model        = lightTransform;
+    transform.inverseModel = transform.model.inversed().transposed();
     m_commandBuffer.setPipelineState(m_lightPipelineState);
 
     m_commandBuffer.setGraphicsConstantBuffer(0, 0, &transform, sizeof(transform));
     m_commandBuffer.setGraphicsConstantBuffer(0, 1, &light, sizeof(light));
+    m_commandBuffer.setGraphicsView(0, 2, m_diffuseMap.shaderResourceView());
+    m_commandBuffer.setGraphicsView(0, 3, m_specularMap.shaderResourceView());
+    m_commandBuffer.setGraphicsSampler(1, 0, m_sampler);
+
     m_commandBuffer.draw(static_cast<std::uint32_t>(std::size(VERTICES)));
 
     m_commandBuffer.transition(backBuffer, D3D12_RESOURCE_STATE_PRESENT);
