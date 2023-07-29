@@ -1,3 +1,4 @@
+#include <ink/asset/image.h>
 #include <ink/core/log.h>
 #include <ink/core/window.h>
 #include <ink/math/number.h>
@@ -132,27 +133,46 @@ private:
 struct Vertex {
     Vector3 position;
     Vector3 normal;
+    Vector2 texcoord;
 };
 
 constexpr Vertex VERTICES[] = {
-    {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}}, {{0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}},
-    {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}},   {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}},
-    {{-0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}},  {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}},
-    {{-0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},   {{0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-    {{0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},     {{0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-    {{-0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},    {{-0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-    {{-0.5f, 0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}},   {{-0.5f, 0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}},
-    {{-0.5f, -0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}}, {{-0.5f, -0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}},
-    {{-0.5f, -0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}},  {{-0.5f, 0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}},
-    {{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}},     {{0.5f, 0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},   {{0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, -0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}},    {{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{-0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}}, {{0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}},
-    {{0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}},   {{0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}},
-    {{-0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}},  {{-0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}},
-    {{-0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},   {{0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-    {{0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},     {{0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-    {{-0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},    {{-0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+    {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f}},
+    {{0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {1.0f, 0.0f}},
+    {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {1.0f, 1.0f}},
+    {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {1.0f, 1.0f}},
+    {{-0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f}},
+    {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f}},
+    {{-0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
+    {{0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
+    {{0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+    {{0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+    {{-0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+    {{-0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
+    {{-0.5f, 0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+    {{-0.5f, 0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
+    {{-0.5f, -0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+    {{-0.5f, -0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+    {{-0.5f, -0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+    {{-0.5f, 0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+    {{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+    {{0.5f, 0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
+    {{0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+    {{0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+    {{0.5f, -0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+    {{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+    {{-0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f}},
+    {{0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f}},
+    {{0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f}},
+    {{0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f}},
+    {{-0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
+    {{-0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f}},
+    {{-0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
+    {{0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
+    {{0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+    {{0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+    {{-0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+    {{-0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
 };
 
 class Application {
@@ -162,6 +182,11 @@ public:
 
     auto run() -> void;
     auto update(float deltaTime) -> void;
+
+    [[nodiscard]]
+    auto now() const noexcept -> float {
+        return m_time;
+    }
 
 private:
     Window                m_mainWindow;
@@ -173,6 +198,11 @@ private:
     CommandBuffer         m_commandBuffer;
     StructuredBuffer      m_vertexBuffer;
     Camera                m_mainCamera;
+    Texture2D             m_diffuseMap;
+    Texture2D             m_specularMap;
+    SamplerView           m_sampler;
+
+    float m_time;
 };
 
 constexpr D3D12_INPUT_ELEMENT_DESC INPUT_ELEMENTS[]{
@@ -194,6 +224,15 @@ constexpr D3D12_INPUT_ELEMENT_DESC INPUT_ELEMENTS[]{
         /* InputSlotClass       = */ D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
         /* InstanceDataStepRate = */ 0,
     },
+    D3D12_INPUT_ELEMENT_DESC{
+        /* SemanticName         = */ "TEXCOORD",
+        /* SemanticIndex        = */ 0,
+        /* Format               = */ DXGI_FORMAT_R32G32_FLOAT,
+        /* InputSlot            = */ 0,
+        /* AlignedByteOffset    = */ 24,
+        /* InputSlotClass       = */ D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+        /* InstanceDataStepRate = */ 0,
+    },
 };
 
 Application::Application() noexcept
@@ -205,16 +244,51 @@ Application::Application() noexcept
       m_lightPipelineState(),
       m_commandBuffer(),
       m_vertexBuffer(std::uint32_t(std::size(VERTICES)), sizeof(Vertex)),
-      m_mainCamera() {
+      m_mainCamera(),
+      m_diffuseMap(),
+      m_specularMap(),
+      m_sampler(),
+      m_time() {
     { // Upload to GPU buffer.
+        Image diffuseMap;
+        if (!diffuseMap.load(u"asset/diffuse.png")) {
+            logFatal(u"Failed to load diffuse map.");
+            std::terminate();
+        }
+
+        m_diffuseMap =
+            Texture2D(diffuseMap.width(), diffuseMap.height(), diffuseMap.pixelFormat(), 1);
+
+        Image specularMap;
+        if (!specularMap.load(u"asset/specular.png")) {
+            logFatal(u"Failed to load specular map.");
+            std::terminate();
+        }
+
+        m_specularMap =
+            Texture2D(specularMap.width(), specularMap.height(), specularMap.pixelFormat(), 1);
+
         m_commandBuffer.transition(m_vertexBuffer, D3D12_RESOURCE_STATE_COPY_DEST);
         m_commandBuffer.copyBuffer(VERTICES, m_vertexBuffer, 0, sizeof(VERTICES));
         m_commandBuffer.transition(m_vertexBuffer, D3D12_RESOURCE_STATE_GENERIC_READ);
+
+        m_commandBuffer.transition(m_diffuseMap, D3D12_RESOURCE_STATE_COPY_DEST);
+        m_commandBuffer.copyTexture(diffuseMap.data(), diffuseMap.pixelFormat(),
+                                    diffuseMap.rowPitch(), diffuseMap.width(), diffuseMap.height(),
+                                    m_diffuseMap, 0);
+        m_commandBuffer.transition(m_diffuseMap, D3D12_RESOURCE_STATE_GENERIC_READ);
+
+        m_commandBuffer.transition(m_specularMap, D3D12_RESOURCE_STATE_COPY_DEST);
+        m_commandBuffer.copyTexture(specularMap.data(), specularMap.pixelFormat(),
+                                    specularMap.rowPitch(), specularMap.width(),
+                                    specularMap.height(), m_specularMap, 0);
+        m_commandBuffer.transition(m_specularMap, D3D12_RESOURCE_STATE_GENERIC_READ);
+
         m_commandBuffer.submit();
     }
 
     { // Create root signature.
-        D3D12_ROOT_PARAMETER parameters[1]{};
+        D3D12_ROOT_PARAMETER parameters[2]{};
 
         D3D12_DESCRIPTOR_RANGE viewRanges[]{
             D3D12_DESCRIPTOR_RANGE{
@@ -224,11 +298,31 @@ Application::Application() noexcept
                 /* RegisterSpace                     = */ 0,
                 /* OffsetInDescriptorsFromTableStart = */ 0,
             },
-        };
+            D3D12_DESCRIPTOR_RANGE{
+                /* RangeType                         = */ D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+                /* NumDescriptors                    = */ 2,
+                /* BaseShaderRegister                = */ 0,
+                /* RegisterSpace                     = */ 0,
+                /* OffsetInDescriptorsFromTableStart = */ 2,
+            }};
         parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
         parameters[0].DescriptorTable.NumDescriptorRanges = UINT(std::size(viewRanges));
         parameters[0].DescriptorTable.pDescriptorRanges   = viewRanges;
         parameters[0].ShaderVisibility                    = D3D12_SHADER_VISIBILITY_ALL;
+
+        D3D12_DESCRIPTOR_RANGE samplerRanges[]{
+            D3D12_DESCRIPTOR_RANGE{
+                /* RangeType                         = */ D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER,
+                /* NumDescriptors                    = */ 1,
+                /* BaseShaderRegister                = */ 0,
+                /* RegisterSpace                     = */ 0,
+                /* OffsetInDescriptorsFromTableStart = */ 0,
+            },
+        };
+        parameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        parameters[1].DescriptorTable.NumDescriptorRanges = UINT(std::size(samplerRanges));
+        parameters[1].DescriptorTable.pDescriptorRanges   = samplerRanges;
+        parameters[1].ShaderVisibility                    = D3D12_SHADER_VISIBILITY_ALL;
 
         D3D12_ROOT_SIGNATURE_DESC desc{
             /* NumParameters     = */ static_cast<UINT>(std::size(parameters)),
@@ -302,6 +396,21 @@ Application::Application() noexcept
         m_lightPipelineState = GraphicsPipelineState(desc);
     }
 
+    { // Create sampler.
+        D3D12_SAMPLER_DESC desc{};
+        desc.Filter         = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+        desc.AddressU       = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        desc.AddressV       = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        desc.AddressW       = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        desc.MipLODBias     = 0;
+        desc.MaxAnisotropy  = 16;
+        desc.ComparisonFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+        desc.MinLOD         = 0.0f;
+        desc.MaxLOD         = D3D12_FLOAT32_MAX;
+
+        m_sampler.initSampler(desc);
+    }
+
     // Set swap chain back buffer clear color.
     m_swapChain.setClearColor(colors::Black);
 }
@@ -316,6 +425,7 @@ auto Application::run() -> void {
     QueryPerformanceCounter(&now);
     const double timeCoef = 1.0 / static_cast<double>(countsPerSec.QuadPart);
     lastUpdate            = now;
+    m_time                = static_cast<float>(static_cast<double>(now.QuadPart) * timeCoef);
 
     MSG msg{};
     while (!m_mainWindow.isClosed()) {
@@ -325,6 +435,7 @@ auto Application::run() -> void {
         } else {
             QueryPerformanceCounter(&now);
             double deltaTime = static_cast<double>(now.QuadPart - lastUpdate.QuadPart) * timeCoef;
+            m_time           = static_cast<float>(static_cast<double>(now.QuadPart) * timeCoef);
             this->update(static_cast<float>(deltaTime));
             lastUpdate = now;
         }
@@ -333,6 +444,7 @@ auto Application::run() -> void {
 
 struct TransformUniform {
     Matrix4 model;
+    Matrix4 inverseModel;
     Matrix4 view;
     Matrix4 projection;
 };
@@ -345,12 +457,7 @@ struct LightUniform {
         Color   diffuse;
         Color   specular;
     } light;
-    struct {
-        Color ambient;
-        Color diffuse;
-        Color specular;
-        float shininess;
-    } material;
+    float shininess;
 };
 
 auto Application::update(float deltaTime) -> void {
@@ -375,20 +482,23 @@ auto Application::update(float deltaTime) -> void {
         m_mainCamera.rotate(0, deltaTime);
 
     TransformUniform transform;
-    transform.model      = Matrix4(1.0f);
-    transform.view       = m_mainCamera.view();
-    transform.projection = m_mainCamera.projection();
+    transform.model        = Matrix4(1.0f);
+    transform.inverseModel = transform.model.inversed().transposed();
+    transform.view         = m_mainCamera.view();
+    transform.projection   = m_mainCamera.projection();
+
+    Matrix4 lightTransform(1.0f);
+    lightTransform.scale(0.2f, 0.2f, 0.2f)
+        .translate(1.2f, 1.0f, -2.0f)
+        .rotate({0.0f, 1.0f, 0.0f}, this->now());
 
     LightUniform light;
-    light.cameraPos          = m_mainCamera.position();
-    light.light.position     = {1.2f, 1.0f, 2.0f, 1.0f};
-    light.light.ambient      = {0.1f, 0.1f, 0.1f, 1.0f};
-    light.light.diffuse      = {0.5f, 0.5f, 0.5f, 1.0f};
-    light.light.specular     = {1.0f, 1.0f, 1.0f, 1.0f};
-    light.material.ambient   = {1.0f, 0.5f, 0.31f, 1.0f};
-    light.material.diffuse   = {1.0f, 0.5f, 0.31f, 1.0f};
-    light.material.specular  = {0.5f, 0.5f, 0.5f, 1.0f};
-    light.material.shininess = 32.0f;
+    light.cameraPos      = m_mainCamera.position();
+    light.light.position = Vector4(0.0f, 0.0f, 0.0f, 1.0f) * lightTransform;
+    light.light.ambient  = {0.2f, 0.2f, 0.2f, 1.0f};
+    light.light.diffuse  = {0.5f, 0.5f, 0.5f, 1.0f};
+    light.light.specular = {1.0f, 1.0f, 1.0f, 1.0f};
+    light.shininess      = 64.0f;
 
     auto &backBuffer = m_swapChain.backBuffer();
     m_commandBuffer.transition(backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET);
@@ -405,16 +515,23 @@ auto Application::update(float deltaTime) -> void {
 
     m_commandBuffer.setGraphicsConstantBuffer(0, 0, &transform, sizeof(transform));
     m_commandBuffer.setGraphicsConstantBuffer(0, 1, &light, sizeof(light));
+    m_commandBuffer.setGraphicsView(0, 2, m_diffuseMap.shaderResourceView());
+    m_commandBuffer.setGraphicsView(0, 3, m_specularMap.shaderResourceView());
+    m_commandBuffer.setGraphicsSampler(1, 0, m_sampler);
 
     m_commandBuffer.setViewport(0, 0, m_mainWindow.width(), m_mainWindow.height());
     m_commandBuffer.setScissorRect(0, 0, m_mainWindow.width(), m_mainWindow.height());
     m_commandBuffer.draw(static_cast<std::uint32_t>(std::size(VERTICES)));
 
-    transform.model = Matrix4(1.0f).translated(light.light.position);
+    transform.model        = lightTransform;
+    transform.inverseModel = transform.model.inversed().transposed();
     m_commandBuffer.setPipelineState(m_lightPipelineState);
 
     m_commandBuffer.setGraphicsConstantBuffer(0, 0, &transform, sizeof(transform));
     m_commandBuffer.setGraphicsConstantBuffer(0, 1, &light, sizeof(light));
+    m_commandBuffer.setGraphicsView(0, 2, m_diffuseMap.shaderResourceView());
+    m_commandBuffer.setGraphicsView(0, 3, m_specularMap.shaderResourceView());
+    m_commandBuffer.setGraphicsSampler(1, 0, m_sampler);
 
     m_commandBuffer.draw(static_cast<std::uint32_t>(std::size(VERTICES)));
 
