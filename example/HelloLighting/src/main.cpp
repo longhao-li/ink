@@ -17,20 +17,16 @@ class Camera {
 public:
     Camera() noexcept = default;
 
-    auto rotate(float pitch, float roll) noexcept -> void {
-        m_pitch += pitch;
-        m_roll += roll;
-        m_pitch = std::clamp(m_pitch, -Pi<float> * 0.45f, Pi<float> * 0.45f);
-        m_roll  = std::fmod(m_roll, Pi<float> * 2.0f);
-
+    auto rotate(float pitch, float yaw) noexcept -> void {
+        Quaternion rot(pitch, yaw, 0.0f);
+        m_rotation *= rot;
         m_isLookAtDirty = true;
     }
 
     [[nodiscard]]
     auto forward() const noexcept -> Vector4 {
-        Quaternion rotation(m_pitch, m_roll, 0.0f);
         Quaternion direction(0.0f, 0.0f, 0.0f, 1.0f);
-        direction = rotation * direction * rotation.conjugated();
+        direction = m_rotation * direction * m_rotation.conjugated();
         return Vector4(direction.x, direction.y, direction.z, 0.0f).normalized();
     }
 
@@ -49,9 +45,8 @@ public:
         if (!m_isLookAtDirty)
             return m_lookAt;
 
-        Quaternion rotation(m_pitch, m_roll, 0.0f);
         Quaternion direction(0.0f, 0.0f, 0.0f, 1.0f);
-        direction = rotation * direction * rotation.conjugated();
+        direction = m_rotation * direction * m_rotation.conjugated();
         Vector4 dir(direction.x, direction.y, direction.z, 0.0f);
         dir.normalize();
         m_lookAt        = ink::lookTo(m_position, dir, {0.0f, 1.0f, 0.0f, 0.0f});
@@ -123,8 +118,7 @@ public:
 private:
     mutable bool m_isLookAtDirty     = true;
     mutable bool m_isProjectionDirty = true;
-    float        m_pitch             = 0.0f;
-    float        m_roll              = 0.0f;
+    Quaternion   m_rotation          = {1.0f};
     float        m_fovY              = Pi<float> * 0.25f;
     float        m_aspectRatio       = 4.0f / 3.0f;
     float        m_zNear             = 0.1f;
@@ -164,6 +158,7 @@ constexpr Vertex VERTICES[] = {
 class Application {
 public:
     Application() noexcept;
+    ~Application() noexcept;
 
     auto run() -> void;
     auto update(float deltaTime) -> void;
@@ -236,7 +231,7 @@ Application::Application() noexcept
         parameters[0].ShaderVisibility                    = D3D12_SHADER_VISIBILITY_ALL;
 
         D3D12_ROOT_SIGNATURE_DESC desc{
-            /* NumParameters     = */ 1,
+            /* NumParameters     = */ static_cast<UINT>(std::size(parameters)),
             /* pParameters       = */ parameters,
             /* NumStaticSamplers = */ 0,
             /* pStaticSamplers   = */ nullptr,
@@ -311,6 +306,10 @@ Application::Application() noexcept
     m_swapChain.setClearColor(colors::Black);
 }
 
+Application::~Application() noexcept {
+    RenderDevice::singleton().sync();
+}
+
 auto Application::run() -> void {
     LARGE_INTEGER now, lastUpdate, countsPerSec;
     QueryPerformanceFrequency(&countsPerSec);
@@ -340,13 +339,24 @@ struct TransformUniform {
 
 struct LightUniform {
     Vector4 cameraPos;
-    Vector4 lightPos;
-    Color   objectColor;
-    Color   lightColor;
+    struct {
+        Vector4 position;
+        Color   ambient;
+        Color   diffuse;
+        Color   specular;
+    } light;
+    struct {
+        Color ambient;
+        Color diffuse;
+        Color specular;
+        float shininess;
+    } material;
 };
 
 auto Application::update(float deltaTime) -> void {
     // Update camera.
+    if (isKeyPressed(KeyCode::Escape))
+        m_mainWindow.close();
     if (isKeyPressed(KeyCode::W))
         m_mainCamera.move(m_mainCamera.forward() * deltaTime);
     if (isKeyPressed(KeyCode::A))
@@ -370,10 +380,15 @@ auto Application::update(float deltaTime) -> void {
     transform.projection = m_mainCamera.projection();
 
     LightUniform light;
-    light.cameraPos   = m_mainCamera.position();
-    light.lightPos    = {1.2f, 1.0f, 2.0f, 1.0f};
-    light.lightColor  = {1.0f, 1.0f, 1.0f, 1.0f};
-    light.objectColor = {1.0f, 0.5f, 0.31f, 1.0f};
+    light.cameraPos          = m_mainCamera.position();
+    light.light.position     = {1.2f, 1.0f, 2.0f, 1.0f};
+    light.light.ambient      = {0.1f, 0.1f, 0.1f, 1.0f};
+    light.light.diffuse      = {0.5f, 0.5f, 0.5f, 1.0f};
+    light.light.specular     = {1.0f, 1.0f, 1.0f, 1.0f};
+    light.material.ambient   = {1.0f, 0.5f, 0.31f, 1.0f};
+    light.material.diffuse   = {1.0f, 0.5f, 0.31f, 1.0f};
+    light.material.specular  = {0.5f, 0.5f, 0.5f, 1.0f};
+    light.material.shininess = 32.0f;
 
     auto &backBuffer = m_swapChain.backBuffer();
     m_commandBuffer.transition(backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET);
@@ -395,11 +410,12 @@ auto Application::update(float deltaTime) -> void {
     m_commandBuffer.setScissorRect(0, 0, m_mainWindow.width(), m_mainWindow.height());
     m_commandBuffer.draw(static_cast<std::uint32_t>(std::size(VERTICES)));
 
-    transform.model = Matrix4(1.0f).translated(light.lightPos);
+    transform.model = Matrix4(1.0f).translated(light.light.position);
     m_commandBuffer.setPipelineState(m_lightPipelineState);
 
     m_commandBuffer.setGraphicsConstantBuffer(0, 0, &transform, sizeof(transform));
     m_commandBuffer.setGraphicsConstantBuffer(0, 1, &light, sizeof(light));
+
     m_commandBuffer.draw(static_cast<std::uint32_t>(std::size(VERTICES)));
 
     m_commandBuffer.transition(backBuffer, D3D12_RESOURCE_STATE_PRESENT);
