@@ -320,6 +320,7 @@ public:
     friend class Sampler;
     friend class SwapChain;
     friend class DynamicBufferAllocator;
+    friend class DynamicDescriptorHeap;
 
 private:
     /// @brief
