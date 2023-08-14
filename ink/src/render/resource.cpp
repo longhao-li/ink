@@ -1,24 +1,23 @@
-#include "ink/render/resource.h"
-#include "ink/core/assert.h"
-#include "ink/render/device.h"
+#include "ink/render/resource.hpp"
+#include "ink/core/exception.hpp"
+#include "ink/render/device.hpp"
 
 using namespace ink;
 
-// Prevent compiler from generating RTTI everywhere.
-ink::GpuResource::~GpuResource() noexcept {}
+ink::GpuResource::GpuResource() noexcept
+    : m_resource(), m_usageState(D3D12_RESOURCE_STATE_COMMON) {}
 
-ink::GpuBuffer::GpuBuffer() noexcept
-    : GpuResource(), m_size(), m_gpuAddress(), m_byteAddressUAV() {}
+ink::GpuResource::GpuResource(GpuResource &&other) noexcept = default;
 
-ink::GpuBuffer::GpuBuffer(std::size_t size) noexcept
+ink::GpuResource::~GpuResource() noexcept = default;
+
+auto ink::GpuResource::operator=(GpuResource &&other) noexcept -> GpuResource & = default;
+
+ink::GpuBuffer::GpuBuffer(RenderDevice &renderDevice, ID3D12Device *device, std::size_t size)
     : GpuResource(),
       m_size((size + 0xFF) & ~std::size_t(0xFF)),
       m_gpuAddress(),
-      m_byteAddressUAV() {
-    [[maybe_unused]] HRESULT hr;
-
-    auto &dev = RenderDevice::singleton();
-
+      m_byteAddressUAV(renderDevice.newUnorderedAccessView()) {
     { // Create ID3D12Resource.
         const D3D12_HEAP_PROPERTIES heapProps{
             /* Type                 = */ D3D12_HEAP_TYPE_DEFAULT,
@@ -45,11 +44,11 @@ ink::GpuBuffer::GpuBuffer(std::size_t size) noexcept
             /* Flags  = */ D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
         };
 
-        hr =
-            dev.device()->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, state(),
-                                                  nullptr, IID_PPV_ARGS(m_resource.GetAddressOf()));
-        inkAssert(SUCCEEDED(hr), u"Failed to create ID3D12Resource for GpuBuffer: 0x{:X}.",
-                  static_cast<std::uint32_t>(hr));
+        HRESULT hr = device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
+                                                     D3D12_RESOURCE_STATE_COMMON, nullptr,
+                                                     IID_PPV_ARGS(m_resource.GetAddressOf()));
+        if (FAILED(hr))
+            throw RenderAPIException(hr, "Failed to create ID3D12Resource for GpuBuffer.");
 
         m_gpuAddress = m_resource->GetGPUVirtualAddress();
     }
@@ -64,53 +63,53 @@ ink::GpuBuffer::GpuBuffer(std::size_t size) noexcept
         desc.Buffer.CounterOffsetInBytes = 0;
         desc.Buffer.Flags                = D3D12_BUFFER_UAV_FLAG_RAW;
 
-        m_byteAddressUAV.initUnorderedAccess(m_resource.Get(), nullptr, &desc);
+        m_byteAddressUAV.update(m_resource.Get(), nullptr, &desc);
     }
 }
 
+ink::GpuBuffer::GpuBuffer() noexcept
+    : GpuResource(), m_size(), m_gpuAddress(), m_byteAddressUAV() {}
+
 ink::GpuBuffer::GpuBuffer(GpuBuffer &&other) noexcept = default;
+
+ink::GpuBuffer::~GpuBuffer() noexcept = default;
 
 auto ink::GpuBuffer::operator=(GpuBuffer &&other) noexcept -> GpuBuffer & = default;
 
-ink::GpuBuffer::~GpuBuffer() noexcept {}
-
-ink::StructuredBuffer::StructuredBuffer() noexcept
-    : GpuBuffer(), m_elementCount(), m_elementSize(), m_structuredBufferUAV() {}
-
-ink::StructuredBuffer::StructuredBuffer(std::uint32_t count, std::uint32_t size) noexcept
-    : GpuBuffer(std::size_t(count) * size),
-      m_elementCount(count),
-      m_elementSize(size),
-      m_structuredBufferUAV() {
-    if (this->size() == 0)
-        return;
-
+ink::StructuredBuffer::StructuredBuffer(RenderDevice &renderDevice,
+                                        ID3D12Device *device,
+                                        std::uint32_t elementCount,
+                                        std::uint32_t elementSize)
+    : GpuBuffer(renderDevice, device, static_cast<std::size_t>(elementCount) * elementSize),
+      m_device(device),
+      m_elementCount(elementCount),
+      m_elementSize(elementSize),
+      m_structuredBufferUAV(renderDevice.newUnorderedAccessView()) {
     // Create structured buffer UAV.
     D3D12_UNORDERED_ACCESS_VIEW_DESC desc;
     desc.Format                      = DXGI_FORMAT_UNKNOWN;
     desc.ViewDimension               = D3D12_UAV_DIMENSION_BUFFER;
     desc.Buffer.FirstElement         = 0;
-    desc.Buffer.NumElements          = count;
-    desc.Buffer.StructureByteStride  = size;
+    desc.Buffer.NumElements          = m_elementCount;
+    desc.Buffer.StructureByteStride  = m_elementSize;
     desc.Buffer.CounterOffsetInBytes = 0;
     desc.Buffer.Flags                = D3D12_BUFFER_UAV_FLAG_NONE;
 
-    m_structuredBufferUAV.initUnorderedAccess(m_resource.Get(), nullptr, &desc);
+    m_structuredBufferUAV.update(m_resource.Get(), nullptr, &desc);
 }
 
+ink::StructuredBuffer::StructuredBuffer() noexcept
+    : GpuBuffer(), m_device(), m_elementCount(), m_elementSize(), m_structuredBufferUAV() {}
+
 ink::StructuredBuffer::StructuredBuffer(StructuredBuffer &&other) noexcept = default;
+
+ink::StructuredBuffer::~StructuredBuffer() noexcept = default;
 
 auto ink::StructuredBuffer::operator=(StructuredBuffer &&other) noexcept
     -> StructuredBuffer & = default;
 
-ink::StructuredBuffer::~StructuredBuffer() noexcept {}
-
-auto ink::StructuredBuffer::reshape(std::uint32_t newCount, std::uint32_t newSize) noexcept
-    -> void {
+auto ink::StructuredBuffer::reshape(std::uint32_t newCount, std::uint32_t newSize) -> void {
     std::size_t requiredSize = static_cast<std::size_t>(newCount) * newSize;
-
-    m_elementCount = newCount;
-    m_elementSize  = newSize;
 
     // This buffer could store the new elements and no need to recreate GPU buffer.
     if (requiredSize <= m_size) {
@@ -124,21 +123,17 @@ auto ink::StructuredBuffer::reshape(std::uint32_t newCount, std::uint32_t newSiz
         desc.Buffer.CounterOffsetInBytes = 0;
         desc.Buffer.Flags                = D3D12_BUFFER_UAV_FLAG_NONE;
 
-        m_structuredBufferUAV.initUnorderedAccess(m_resource.Get(), nullptr, &desc);
+        m_structuredBufferUAV.update(m_resource.Get(), nullptr, &desc);
+
+        m_elementCount = newCount;
+        m_elementSize  = newSize;
+
         return;
     }
 
-    // Recreate the GPU buffer.
-    m_resource.Reset();
-    m_usageState = D3D12_RESOURCE_STATE_COMMON;
-
-    // New buffer size.
-    m_size = (requiredSize + 0xFF) & ~std::size_t(0xFF);
-
-    auto &dev = RenderDevice::singleton();
-
     { // Create ID3D12Resource.
-        [[maybe_unused]] HRESULT hr;
+        Microsoft::WRL::ComPtr<ID3D12Resource> newResource;
+        requiredSize = (requiredSize + 0xFF) & ~std::size_t(0xFF);
 
         const D3D12_HEAP_PROPERTIES heapProps{
             /* Type                 = */ D3D12_HEAP_TYPE_DEFAULT,
@@ -151,7 +146,7 @@ auto ink::StructuredBuffer::reshape(std::uint32_t newCount, std::uint32_t newSiz
         const D3D12_RESOURCE_DESC desc{
             /* Dimension        = */ D3D12_RESOURCE_DIMENSION_BUFFER,
             /* Alignment        = */ 0,
-            /* Width            = */ m_size,
+            /* Width            = */ static_cast<UINT64>(requiredSize),
             /* Height           = */ 1,
             /* DepthOrArraySize = */ 1,
             /* MipLevels        = */ 1,
@@ -165,13 +160,18 @@ auto ink::StructuredBuffer::reshape(std::uint32_t newCount, std::uint32_t newSiz
             /* Flags  = */ D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
         };
 
-        hr =
-            dev.device()->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, state(),
-                                                  nullptr, IID_PPV_ARGS(m_resource.GetAddressOf()));
-        inkAssert(SUCCEEDED(hr), u"Failed to create ID3D12Resource for StructuredBuffer: 0x{:X}.",
-                  static_cast<std::uint32_t>(hr));
+        HRESULT hr = m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
+                                                       D3D12_RESOURCE_STATE_COMMON, nullptr,
+                                                       IID_PPV_ARGS(newResource.GetAddressOf()));
+        if (FAILED(hr))
+            throw RenderAPIException(hr, "Failed to recreate ID3D12Resource for StructuredBuffer.");
 
-        m_gpuAddress = m_resource->GetGPUVirtualAddress();
+        m_resource     = std::move(newResource);
+        m_usageState   = D3D12_RESOURCE_STATE_COMMON;
+        m_size         = requiredSize;
+        m_gpuAddress   = m_resource->GetGPUVirtualAddress();
+        m_elementCount = newCount;
+        m_elementSize  = newSize;
     }
 
     { // Recreate byte address UAV.
@@ -184,10 +184,10 @@ auto ink::StructuredBuffer::reshape(std::uint32_t newCount, std::uint32_t newSiz
         desc.Buffer.CounterOffsetInBytes = 0;
         desc.Buffer.Flags                = D3D12_BUFFER_UAV_FLAG_RAW;
 
-        m_byteAddressUAV.initUnorderedAccess(m_resource.Get(), nullptr, &desc);
+        m_byteAddressUAV.update(m_resource.Get(), nullptr, &desc);
     }
 
-    { // Create structured buffer UAV.
+    { // Recreate structured buffer UAV.
         D3D12_UNORDERED_ACCESS_VIEW_DESC desc;
         desc.Format                      = DXGI_FORMAT_UNKNOWN;
         desc.ViewDimension               = D3D12_UAV_DIMENSION_BUFFER;
@@ -197,77 +197,8 @@ auto ink::StructuredBuffer::reshape(std::uint32_t newCount, std::uint32_t newSiz
         desc.Buffer.CounterOffsetInBytes = 0;
         desc.Buffer.Flags                = D3D12_BUFFER_UAV_FLAG_NONE;
 
-        m_structuredBufferUAV.initUnorderedAccess(m_resource.Get(), nullptr, &desc);
+        m_structuredBufferUAV.update(m_resource.Get(), nullptr, &desc);
     }
-}
-
-ink::ReadbackBuffer::ReadbackBuffer() noexcept : GpuResource(), m_size(), m_gpuAddress() {}
-
-ink::ReadbackBuffer::ReadbackBuffer(std::size_t size) noexcept
-    : GpuResource(), m_size((size + 0xFF) & ~std::size_t(0xFF)), m_gpuAddress() {
-    [[maybe_unused]] HRESULT hr;
-
-    auto &dev = RenderDevice::singleton();
-
-    // Create ID3D12Resource.
-    const D3D12_HEAP_PROPERTIES heapProps{
-        /* Type                 = */ D3D12_HEAP_TYPE_READBACK,
-        /* CPUPageProperty      = */ D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
-        /* MemoryPoolPreference = */ D3D12_MEMORY_POOL_UNKNOWN,
-        /* CreationNodeMask     = */ 0,
-        /* VisibleNodeMask      = */ 0,
-    };
-
-    const D3D12_RESOURCE_DESC desc{
-        /* Dimension        = */ D3D12_RESOURCE_DIMENSION_BUFFER,
-        /* Alignment        = */ 0,
-        /* Width            = */ m_size,
-        /* Height           = */ 1,
-        /* DepthOrArraySize = */ 1,
-        /* MipLevels        = */ 1,
-        /* Format           = */ DXGI_FORMAT_UNKNOWN,
-        /* SampleDesc       = */
-        {
-            /* Count   = */ 1,
-            /* Quality = */ 0,
-        },
-        /* Layout = */ D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-        /* Flags  = */ D3D12_RESOURCE_FLAG_NONE,
-    };
-
-    hr = dev.device()->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
-                                               D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-                                               IID_PPV_ARGS(m_resource.GetAddressOf()));
-
-    inkAssert(SUCCEEDED(hr), u"Failed to create ID3D12Resource for readback buffer: 0x{:X}.",
-              static_cast<std::uint32_t>(hr));
-
-    m_usageState = D3D12_RESOURCE_STATE_COPY_DEST;
-    m_gpuAddress = m_resource->GetGPUVirtualAddress();
-}
-
-ink::ReadbackBuffer::ReadbackBuffer(ReadbackBuffer &&other) noexcept = default;
-
-auto ink::ReadbackBuffer::operator=(ReadbackBuffer &&other) noexcept -> ReadbackBuffer & = default;
-
-ink::ReadbackBuffer::~ReadbackBuffer() noexcept {}
-
-auto ink::ReadbackBuffer::unmap() noexcept -> void {
-    D3D12_RANGE range{};
-    m_resource->Unmap(0, &range);
-}
-
-auto ink::ReadbackBuffer::map() const noexcept -> const void * {
-    [[maybe_unused]] HRESULT hr;
-
-    void       *ptr;
-    D3D12_RANGE range{0, m_size};
-
-    hr = m_resource->Map(0, &range, &ptr);
-    inkAssert(SUCCEEDED(hr), u"Failed to map readback buffer: 0x{:X}.",
-              static_cast<std::uint32_t>(hr));
-
-    return ptr;
 }
 
 ink::PixelBuffer::PixelBuffer() noexcept
@@ -277,13 +208,15 @@ ink::PixelBuffer::PixelBuffer() noexcept
       m_arraySize(),
       m_sampleCount(),
       m_mipLevels(),
-      m_pixelFormat(DXGI_FORMAT_UNKNOWN) {}
+      m_pixelFormat(),
+      m_shaderResourceView(),
+      m_unorderedAccessView() {}
 
 ink::PixelBuffer::PixelBuffer(PixelBuffer &&other) noexcept = default;
 
-auto ink::PixelBuffer::operator=(PixelBuffer &&other) noexcept -> PixelBuffer & = default;
+ink::PixelBuffer::~PixelBuffer() noexcept = default;
 
-ink::PixelBuffer::~PixelBuffer() noexcept {}
+auto ink::PixelBuffer::operator=(PixelBuffer &&other) noexcept -> PixelBuffer & = default;
 
 namespace {
 
@@ -295,8 +228,7 @@ namespace {
 ///
 /// @return
 ///   Maximum supported mipmap levels.
-[[nodiscard]]
-__forceinline auto maxMipLevels(std::uint32_t width) noexcept -> std::uint32_t {
+[[nodiscard]] auto maxMipLevels(std::uint32_t width) noexcept -> std::uint32_t {
     std::uint32_t result = 0;
     while (width) {
         width >>= 1;
@@ -308,16 +240,15 @@ __forceinline auto maxMipLevels(std::uint32_t width) noexcept -> std::uint32_t {
 
 } // namespace
 
-ink::ColorBuffer::ColorBuffer() noexcept
-    : PixelBuffer(), m_clearColor(), m_rtv(), m_srv(), m_uav() {}
-
-ink::ColorBuffer::ColorBuffer(std::uint32_t width,
+ink::ColorBuffer::ColorBuffer(RenderDevice &renderDevice,
+                              ID3D12Device *device,
+                              std::uint32_t width,
                               std::uint32_t height,
                               std::uint32_t arraySize,
                               DXGI_FORMAT   format,
                               std::uint32_t mipLevels,
-                              std::uint32_t sampleCount) noexcept
-    : PixelBuffer(), m_clearColor(), m_rtv(), m_srv(), m_uav() {
+                              std::uint32_t sampleCount)
+    : PixelBuffer(), m_clearColor(), m_renderTargetView() {
     // Clamp mipmap levels.
     const std::uint32_t maxMip = maxMipLevels(width | height);
     if (mipLevels == 0 || mipLevels > maxMip)
@@ -333,14 +264,10 @@ ink::ColorBuffer::ColorBuffer(std::uint32_t width,
     m_mipLevels   = mipLevels;
     m_pixelFormat = format;
 
-    auto &dev = RenderDevice::singleton();
-
     // Checks if this color buffer supports unordered access.
-    const bool supportUAV = (sampleCount == 1) && dev.supportUnorderedAccess(format);
+    const bool supportUAV = (sampleCount == 1) && renderDevice.supportUnorderedAccess(format);
 
     { // Create ID3D12Resource.
-        [[maybe_unused]] HRESULT hr;
-
         const D3D12_HEAP_PROPERTIES heapProps{
             /* Type                 = */ D3D12_HEAP_TYPE_DEFAULT,
             /* CPUPageProperty      = */ D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
@@ -370,11 +297,11 @@ ink::ColorBuffer::ColorBuffer(std::uint32_t width,
             /* Flags  = */ flags,
         };
 
-        hr =
-            dev.device()->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, state(),
-                                                  nullptr, IID_PPV_ARGS(m_resource.GetAddressOf()));
-        inkAssert(SUCCEEDED(hr), u"Failed to create ID3D12Resource for ColorBuffer: 0x{:X}.",
-                  static_cast<std::uint32_t>(hr));
+        HRESULT hr = device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
+                                                     D3D12_RESOURCE_STATE_COMMON, nullptr,
+                                                     IID_PPV_ARGS(m_resource.GetAddressOf()));
+        if (FAILED(hr))
+            throw RenderAPIException(hr, "Failed to create ID3D12Resource for ColorBuffer.");
     }
 
     { // Create render target view.
@@ -399,7 +326,8 @@ ink::ColorBuffer::ColorBuffer(std::uint32_t width,
             desc.Texture2D.PlaneSlice = 0;
         }
 
-        m_rtv.initRenderTarget(m_resource.Get(), &desc);
+        m_renderTargetView = renderDevice.newRenderTargetView();
+        m_renderTargetView.update(m_resource.Get(), &desc);
     }
 
     { // Create shader resource view.
@@ -429,7 +357,8 @@ ink::ColorBuffer::ColorBuffer(std::uint32_t width,
             desc.Texture2D.ResourceMinLODClamp = 0;
         }
 
-        m_srv.initShaderResource(m_resource.Get(), &desc);
+        m_shaderResourceView = renderDevice.newShaderResourceView();
+        m_shaderResourceView.update(m_resource.Get(), &desc);
     }
 
     // Create unordered access view.
@@ -449,15 +378,18 @@ ink::ColorBuffer::ColorBuffer(std::uint32_t width,
             desc.Texture2D.PlaneSlice = 0;
         }
 
-        m_uav.initUnorderedAccess(m_resource.Get(), nullptr, &desc);
+        m_unorderedAccessView = renderDevice.newUnorderedAccessView();
+        m_unorderedAccessView.update(m_resource.Get(), nullptr, &desc);
     }
 }
 
+ink::ColorBuffer::ColorBuffer() noexcept : PixelBuffer(), m_clearColor(), m_renderTargetView() {}
+
 ink::ColorBuffer::ColorBuffer(ColorBuffer &&other) noexcept = default;
 
-auto ink::ColorBuffer::operator=(ColorBuffer &&other) noexcept -> ColorBuffer & = default;
+ink::ColorBuffer::~ColorBuffer() noexcept = default;
 
-ink::ColorBuffer::~ColorBuffer() noexcept {}
+auto ink::ColorBuffer::operator=(ColorBuffer &&other) noexcept -> ColorBuffer & = default;
 
 auto ink::ColorBuffer::resetSwapChainBuffer(Microsoft::WRL::ComPtr<ID3D12Resource> buffer) noexcept
     -> void {
@@ -472,7 +404,7 @@ auto ink::ColorBuffer::resetSwapChainBuffer(Microsoft::WRL::ComPtr<ID3D12Resourc
     m_mipLevels   = desc.MipLevels;
     m_pixelFormat = desc.Format;
 
-    m_rtv.initRenderTarget(m_resource.Get(), nullptr);
+    m_renderTargetView.update(m_resource.Get(), nullptr);
 }
 
 namespace {
@@ -485,8 +417,7 @@ namespace {
 ///
 /// @return
 ///   Depth pixel format from the depth stencil format.
-[[nodiscard]]
-auto getDepthFormat(DXGI_FORMAT format) noexcept -> DXGI_FORMAT {
+[[nodiscard]] auto getDepthFormat(DXGI_FORMAT format) noexcept -> DXGI_FORMAT {
     switch (format) {
     case DXGI_FORMAT_R32G8X24_TYPELESS:
     case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
@@ -517,24 +448,17 @@ auto getDepthFormat(DXGI_FORMAT format) noexcept -> DXGI_FORMAT {
 
 } // namespace
 
-ink::DepthBuffer::DepthBuffer() noexcept
-    : PixelBuffer(),
-      m_clearDepth(1.0f),
-      m_clearStencil(),
-      m_dsv(),
-      m_depthReadOnlyView(),
-      m_depthSRV() {}
-
-ink::DepthBuffer::DepthBuffer(std::uint32_t width,
+ink::DepthBuffer::DepthBuffer(RenderDevice &renderDevice,
+                              ID3D12Device *device,
+                              std::uint32_t width,
                               std::uint32_t height,
                               DXGI_FORMAT   format,
-                              std::uint32_t sampleCount) noexcept
+                              std::uint32_t sampleCount)
     : PixelBuffer(),
       m_clearDepth(1.0f),
       m_clearStencil(),
-      m_dsv(),
-      m_depthReadOnlyView(),
-      m_depthSRV() {
+      m_depthStencilView(),
+      m_depthReadOnlyView() {
     if (sampleCount == 0)
         sampleCount = 1;
 
@@ -545,11 +469,10 @@ ink::DepthBuffer::DepthBuffer(std::uint32_t width,
     this->m_mipLevels   = 1;
     this->m_pixelFormat = format;
 
-    auto &dev = RenderDevice::singleton();
+    const DXGI_FORMAT depthFormat = getDepthFormat(format);
+    const bool supportUAV = (sampleCount == 1) && renderDevice.supportUnorderedAccess(depthFormat);
 
     { // Create ID3D12Resource.
-        [[maybe_unused]] HRESULT hr;
-
         const D3D12_HEAP_PROPERTIES heapProps{
             /* Type                 = */ D3D12_HEAP_TYPE_DEFAULT,
             /* CPUPageProperty      = */ D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
@@ -557,6 +480,10 @@ ink::DepthBuffer::DepthBuffer(std::uint32_t width,
             /* CreationNodeMask     = */ 0,
             /* VisibleNodeMask      = */ 0,
         };
+
+        D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+        if (supportUAV)
+            flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
         const D3D12_RESOURCE_DESC desc{
             /* Dimension        = */ D3D12_RESOURCE_DIMENSION_TEXTURE2D,
@@ -572,7 +499,7 @@ ink::DepthBuffer::DepthBuffer(std::uint32_t width,
                 /* Quality = */ 0,
             },
             /* Layout = */ D3D12_TEXTURE_LAYOUT_UNKNOWN,
-            /* Flags  = */ D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL,
+            /* Flags  = */ flags,
         };
 
         D3D12_CLEAR_VALUE clearValue;
@@ -580,14 +507,16 @@ ink::DepthBuffer::DepthBuffer(std::uint32_t width,
         clearValue.DepthStencil.Depth   = 1.0f;
         clearValue.DepthStencil.Stencil = 0;
 
-        hr = dev.device()->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, state(),
-                                                   &clearValue,
-                                                   IID_PPV_ARGS(m_resource.GetAddressOf()));
-        inkAssert(SUCCEEDED(hr), u"Failed to create ID3D12Resource for depth buffer: 0x{:X}.",
-                  static_cast<std::uint32_t>(hr));
+        HRESULT hr = device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
+                                                     D3D12_RESOURCE_STATE_COMMON, &clearValue,
+                                                     IID_PPV_ARGS(m_resource.GetAddressOf()));
+        if (FAILED(hr))
+            throw RenderAPIException(hr, "Failed to create ID3D12Resource for DepthBuffer.");
     }
 
     { // Create depth stencil view.
+        m_depthStencilView = renderDevice.newDepthStencilView();
+
         D3D12_DEPTH_STENCIL_VIEW_DESC desc;
         desc.Format = format;
         desc.Flags  = D3D12_DSV_FLAG_NONE;
@@ -599,10 +528,12 @@ ink::DepthBuffer::DepthBuffer(std::uint32_t width,
             desc.Texture2D.MipSlice = 0;
         }
 
-        m_dsv.initDepthStencil(m_resource.Get(), &desc);
+        m_depthStencilView.update(m_resource.Get(), &desc);
     }
 
     { // Create depth read-only view.
+        m_depthReadOnlyView = renderDevice.newDepthStencilView();
+
         D3D12_DEPTH_STENCIL_VIEW_DESC desc;
         desc.Format = format;
         desc.Flags  = D3D12_DSV_FLAG_READ_ONLY_DEPTH;
@@ -614,11 +545,13 @@ ink::DepthBuffer::DepthBuffer(std::uint32_t width,
             desc.Texture2D.MipSlice = 0;
         }
 
-        m_depthReadOnlyView.initDepthStencil(m_resource.Get(), &desc);
+        m_depthReadOnlyView.update(m_resource.Get(), &desc);
     }
 
-    const DXGI_FORMAT depthFormat = getDepthFormat(format);
+    // Create depth shader-resource view.
     if (depthFormat != DXGI_FORMAT_UNKNOWN) {
+        m_shaderResourceView = renderDevice.newShaderResourceView();
+
         D3D12_SHADER_RESOURCE_VIEW_DESC desc;
         desc.Format                  = depthFormat;
         desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -633,25 +566,45 @@ ink::DepthBuffer::DepthBuffer(std::uint32_t width,
             desc.Texture2D.ResourceMinLODClamp = 0.0f;
         }
 
-        m_depthSRV.initShaderResource(m_resource.Get(), &desc);
+        m_shaderResourceView.update(m_resource.Get(), &desc);
+    }
+
+    // Create unordered access view.
+    if (supportUAV) {
+        m_unorderedAccessView = renderDevice.newUnorderedAccessView();
+
+        D3D12_UNORDERED_ACCESS_VIEW_DESC desc;
+        desc.Format               = depthFormat;
+        desc.ViewDimension        = D3D12_UAV_DIMENSION_TEXTURE2D;
+        desc.Texture2D.MipSlice   = 0;
+        desc.Texture2D.PlaneSlice = 0;
+
+        m_unorderedAccessView.update(m_resource.Get(), nullptr, &desc);
     }
 }
 
+ink::DepthBuffer::DepthBuffer() noexcept
+    : PixelBuffer(),
+      m_clearDepth(1.0f),
+      m_clearStencil(),
+      m_depthStencilView(),
+      m_depthReadOnlyView() {}
+
 ink::DepthBuffer::DepthBuffer(DepthBuffer &&other) noexcept = default;
+
+ink::DepthBuffer::~DepthBuffer() noexcept = default;
 
 auto ink::DepthBuffer::operator=(DepthBuffer &&other) noexcept -> DepthBuffer & = default;
 
-ink::DepthBuffer::~DepthBuffer() noexcept {}
-
-ink::Texture2D::Texture2D() noexcept : PixelBuffer(), m_isCube(false), m_srv() {}
-
-ink::Texture2D::Texture2D(std::uint32_t width,
+ink::Texture2D::Texture2D(RenderDevice &renderDevice,
+                          ID3D12Device *device,
+                          std::uint32_t width,
                           std::uint32_t height,
                           std::uint32_t arraySize,
                           DXGI_FORMAT   format,
                           std::uint32_t mipLevels,
-                          bool          isCube) noexcept
-    : PixelBuffer(), m_isCube(false), m_srv() {
+                          bool          isCube)
+    : PixelBuffer(), m_isCube() {
     // Check cube texture support.
     isCube   = isCube && (arraySize % 6 == 0);
     m_isCube = isCube;
@@ -668,11 +621,10 @@ ink::Texture2D::Texture2D(std::uint32_t width,
     this->m_mipLevels   = mipLevels;
     this->m_pixelFormat = format;
 
-    auto &dev = RenderDevice::singleton();
+    // Check unordered access support.
+    const bool supportUAV = renderDevice.supportUnorderedAccess(format);
 
     { // Create ID3D12Resource.
-        [[maybe_unused]] HRESULT hr;
-
         const D3D12_HEAP_PROPERTIES heapProps{
             /* Type                 = */ D3D12_HEAP_TYPE_DEFAULT,
             /* CPUPageProperty      = */ D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
@@ -680,6 +632,10 @@ ink::Texture2D::Texture2D(std::uint32_t width,
             /* CreationNodeMask     = */ 0,
             /* VisibleNodeMask      = */ 0,
         };
+
+        D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE;
+        if (supportUAV)
+            flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
         const D3D12_RESOURCE_DESC desc{
             /* Dimension        = */ D3D12_RESOURCE_DIMENSION_TEXTURE2D,
@@ -695,18 +651,20 @@ ink::Texture2D::Texture2D(std::uint32_t width,
                 /* Quality = */ 0,
             },
             /* Layout = */ D3D12_TEXTURE_LAYOUT_UNKNOWN,
-            /* Flags  = */ D3D12_RESOURCE_FLAG_NONE,
+            /* Flags  = */ flags,
         };
 
-        hr =
-            dev.device()->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, state(),
-                                                  nullptr, IID_PPV_ARGS(m_resource.GetAddressOf()));
-        inkAssert(SUCCEEDED(hr), u"Failed to create ID3D12Resource for Texture2D: 0x{:X}.",
-                  static_cast<std::uint32_t>(hr));
+        HRESULT hr = device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
+                                                     D3D12_RESOURCE_STATE_COMMON, nullptr,
+                                                     IID_PPV_ARGS(m_resource.GetAddressOf()));
+        if (FAILED(hr))
+            throw RenderAPIException(hr, "Failed to create ID3D12Resource for Texture2D.");
     }
 
     // Create shader resource view.
     if (isCube) {
+        m_shaderResourceView = renderDevice.newShaderResourceView();
+
         D3D12_SHADER_RESOURCE_VIEW_DESC desc;
         desc.Format                  = format;
         desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -724,14 +682,30 @@ ink::Texture2D::Texture2D(std::uint32_t width,
             desc.TextureCube.ResourceMinLODClamp = 0.0f;
         }
 
-        m_srv.initShaderResource(m_resource.Get(), &desc);
+        m_shaderResourceView.update(m_resource.Get(), &desc);
     } else {
-        m_srv.initShaderResource(m_resource.Get(), nullptr);
+        m_shaderResourceView = renderDevice.newShaderResourceView();
+        m_shaderResourceView.update(m_resource.Get(), nullptr);
+    }
+
+    // Create unordered access view.
+    if (supportUAV) {
+        m_unorderedAccessView = renderDevice.newUnorderedAccessView();
+
+        D3D12_UNORDERED_ACCESS_VIEW_DESC desc;
+        desc.Format               = format;
+        desc.ViewDimension        = D3D12_UAV_DIMENSION_TEXTURE2D;
+        desc.Texture2D.MipSlice   = 0;
+        desc.Texture2D.PlaneSlice = 0;
+
+        m_unorderedAccessView.update(m_resource.Get(), nullptr, &desc);
     }
 }
 
+ink::Texture2D::Texture2D() noexcept : PixelBuffer(), m_isCube() {}
+
 ink::Texture2D::Texture2D(Texture2D &&other) noexcept = default;
 
-auto ink::Texture2D::operator=(Texture2D &&other) noexcept -> Texture2D & = default;
+ink::Texture2D::~Texture2D() noexcept = default;
 
-ink::Texture2D::~Texture2D() noexcept {}
+auto ink::Texture2D::operator=(Texture2D &&other) noexcept -> Texture2D & = default;
