@@ -605,7 +605,10 @@ public:
     ///
     /// @param cmdList
     ///   The command list that is used to bind the specified descriptor heap.
-    InkExport auto submitGraphicsDescriptors(ID3D12GraphicsCommandList *cmdList) noexcept -> void;
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to acquire new descriptor heaps.
+    InkExport auto submitGraphicsDescriptors(ID3D12GraphicsCommandList *cmdList) -> void;
 
     /// @brief
     ///   Upload all descriptors in the cached descriptor tables to shader-visible descriptor heaps
@@ -613,7 +616,10 @@ public:
     ///
     /// @param cmdList
     ///   The command list that is used to bind the specified descriptor heap.
-    InkExport auto submitComputeDescriptors(ID3D12GraphicsCommandList *cmdList) noexcept -> void;
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to acquire new descriptor heaps.
+    InkExport auto submitComputeDescriptors(ID3D12GraphicsCommandList *cmdList) -> void;
 
     /// @brief
     ///   Clean up all descriptors and root signatures.
@@ -662,6 +668,14 @@ private:
     /// @brief
     ///   Current sampler descriptor handle.
     Descriptor m_currentSamplerHandle;
+
+    /// @brief
+    ///   Number of free CBV/SRV/UAV descriptors in current shader-visible descriptor heap.
+    std::uint32_t m_freeViewCount;
+
+    /// @brief
+    ///   Number of free sampler descriptors in current shader-visible descriptor heap.
+    std::uint32_t m_freeSamplerCount;
 
     /// @brief
     ///   Retired CBV/SRV/UAV descriptor heaps.
