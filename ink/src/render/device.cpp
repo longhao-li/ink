@@ -346,6 +346,8 @@ auto ink::RenderDevice::newSwapChain(HWND          window,
     return {*this, m_dxgiFactory.Get(), m_commandQueue.Get(), window, numBuffers, format, tearing};
 }
 
+auto ink::RenderDevice::newCommandBuffer() -> CommandBuffer { return {*this, m_device.Get()}; }
+
 auto ink::RenderDevice::sync(std::uint64_t fenceValue) const -> void {
     if (fenceValue <= m_fence->GetCompletedValue())
         return; // Already completed.

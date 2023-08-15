@@ -2,8 +2,11 @@
 
 #include "../render/resource.hpp"
 
+#include <dxgi1_6.h>
+
 #include <array>
 #include <functional>
+#include <string>
 
 namespace ink {
 
@@ -354,9 +357,7 @@ public:
     ///   This window has been closed.
     /// @retval false
     ///   This window is not closed.
-    [[nodiscard]] auto isClosed() const noexcept -> bool {
-        return m_hWnd == nullptr || ::IsWindow(m_hWnd);
-    }
+    [[nodiscard]] auto isClosed() const noexcept -> bool { return m_hWnd == nullptr; }
 
     /// @brief
     ///   Post a close message to this window. This method returns immediately and will not wait

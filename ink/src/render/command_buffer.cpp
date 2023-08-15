@@ -345,7 +345,7 @@ auto ink::CommandBuffer::beginRenderPass(const RenderPass &renderPass) noexcept 
 
         for (std::uint32_t i = 0; i < renderPass.renderTargetCount; ++i) {
             const auto &info = renderPass.renderTargets[i];
-            if ((info.renderTarget->state() & info.stateBefore) != info.stateBefore) {
+            if (info.renderTarget->state() != info.stateBefore) {
                 const auto oldState = info.renderTarget->state();
                 const auto newState = info.stateBefore;
 
@@ -357,6 +357,8 @@ auto ink::CommandBuffer::beginRenderPass(const RenderPass &renderPass) noexcept 
                 barrier.Transition.StateBefore = oldState;
                 barrier.Transition.StateAfter  = newState;
 
+                info.renderTarget->m_usageState = newState;
+
                 if ((newState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS) &&
                     !(oldState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS)) {
                     auto &uavBarrier         = barriers[count++];
@@ -367,8 +369,8 @@ auto ink::CommandBuffer::beginRenderPass(const RenderPass &renderPass) noexcept 
             }
         }
 
-        if ((renderPass.depthTarget.depthTarget->state() & renderPass.depthTarget.stateBefore) !=
-            renderPass.depthTarget.stateBefore) {
+        if (renderPass.depthTarget.depthTarget &&
+            renderPass.depthTarget.depthTarget->state() != renderPass.depthTarget.stateBefore) {
             const auto oldState = renderPass.depthTarget.depthTarget->state();
             const auto newState = renderPass.depthTarget.stateBefore;
 
@@ -379,6 +381,8 @@ auto ink::CommandBuffer::beginRenderPass(const RenderPass &renderPass) noexcept 
             barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
             barrier.Transition.StateBefore = oldState;
             barrier.Transition.StateAfter  = newState;
+
+            renderPass.depthTarget.depthTarget->m_usageState = newState;
 
             if ((newState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS) &&
                 !(oldState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS)) {
@@ -468,7 +472,7 @@ auto ink::CommandBuffer::endRenderPass() noexcept -> void {
         const auto oldState = m_renderPass.renderTargets[i].renderTarget->state();
         const auto newState = m_renderPass.renderTargets[i].stateAfter;
 
-        if ((oldState & newState) == newState)
+        if (oldState == newState)
             continue;
 
         auto &barrier                = barriers[count++];
@@ -478,6 +482,8 @@ auto ink::CommandBuffer::endRenderPass() noexcept -> void {
         barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
         barrier.Transition.StateBefore = oldState;
         barrier.Transition.StateAfter  = newState;
+
+        m_renderPass.renderTargets[i].renderTarget->m_usageState = newState;
 
         if ((newState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS) &&
             !(oldState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS)) {
@@ -493,7 +499,7 @@ auto ink::CommandBuffer::endRenderPass() noexcept -> void {
         const auto oldState = m_renderPass.depthTarget.depthTarget->state();
         const auto newState = m_renderPass.depthTarget.stateAfter;
 
-        if ((oldState & newState) != newState) {
+        if (oldState != newState) {
             auto &barrier                  = barriers[count++];
             barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
             barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
@@ -501,6 +507,8 @@ auto ink::CommandBuffer::endRenderPass() noexcept -> void {
             barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
             barrier.Transition.StateBefore = oldState;
             barrier.Transition.StateAfter  = newState;
+
+            m_renderPass.depthTarget.depthTarget->m_usageState = newState;
 
             if ((newState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS) &&
                 !(oldState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS)) {
@@ -529,6 +537,8 @@ auto ink::CommandBuffer::copy(GpuResource &src, GpuResource &dst) noexcept -> vo
             barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
             barrier.Transition.StateBefore = src.state();
             barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_COPY_SOURCE;
+
+            src.m_usageState = D3D12_RESOURCE_STATE_COPY_SOURCE;
         }
 
         if (!(dst.state() & D3D12_RESOURCE_STATE_COPY_DEST)) {
@@ -539,6 +549,8 @@ auto ink::CommandBuffer::copy(GpuResource &src, GpuResource &dst) noexcept -> vo
             barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
             barrier.Transition.StateBefore = dst.state();
             barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_COPY_DEST;
+
+            dst.m_usageState = D3D12_RESOURCE_STATE_COPY_DEST;
         }
 
         if (count > 0)
@@ -565,6 +577,8 @@ auto ink::CommandBuffer::copyBuffer(GpuResource &src,
             barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
             barrier.Transition.StateBefore = src.state();
             barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_COPY_SOURCE;
+
+            src.m_usageState = D3D12_RESOURCE_STATE_COPY_SOURCE;
         }
 
         if (!(dst.state() & D3D12_RESOURCE_STATE_COPY_DEST)) {
@@ -575,6 +589,8 @@ auto ink::CommandBuffer::copyBuffer(GpuResource &src,
             barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
             barrier.Transition.StateBefore = dst.state();
             barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_COPY_DEST;
+
+            dst.m_usageState = D3D12_RESOURCE_STATE_COPY_DEST;
         }
 
         if (count > 0)

@@ -313,6 +313,13 @@ public:
                                               DXGI_FORMAT   format     = DXGI_FORMAT_R8G8B8A8_UNORM,
                                               bool          tearing    = true) -> SwapChain;
 
+    /// @brief
+    ///   Create a new command buffer.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to create the new command buffer.
+    [[nodiscard]] InkExport auto newCommandBuffer() -> CommandBuffer;
+
     friend class CommandBuffer;
     friend class ConstantBufferView;
     friend class RenderTargetView;
