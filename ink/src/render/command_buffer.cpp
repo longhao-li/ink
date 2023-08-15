@@ -184,3 +184,122 @@ auto ink::DynamicBufferAllocator::reset(std::uint64_t fenceValue) noexcept -> vo
         m_retiredPages.clear();
     }
 }
+
+ink::CommandBuffer::CommandBuffer(RenderDevice &renderDevice, ID3D12Device5 *device)
+    : m_renderDevice(&renderDevice),
+      m_cmdList(),
+      m_allocator(renderDevice.acquireCommandAllocator()),
+      m_lastSubmitFence(),
+      m_bufferAllocator(renderDevice),
+      m_graphicsRootSignature(),
+      m_computeRootSignature(),
+      m_dynamicDescriptorHeap(renderDevice, device) {
+    HRESULT hr = device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_allocator, nullptr,
+                                           IID_PPV_ARGS(m_cmdList.GetAddressOf()));
+    if (FAILED(hr)) {
+        // Avoid resource leak.
+        renderDevice.releaseCommandAllocator(0, m_allocator);
+        throw RenderAPIException(hr, "Failed to create new command buffer.");
+    }
+}
+
+ink::CommandBuffer::CommandBuffer() noexcept
+    : m_renderDevice(),
+      m_cmdList(),
+      m_allocator(),
+      m_lastSubmitFence(),
+      m_bufferAllocator(),
+      m_graphicsRootSignature(),
+      m_computeRootSignature(),
+      m_dynamicDescriptorHeap() {}
+
+ink::CommandBuffer::CommandBuffer(CommandBuffer &&other) noexcept
+    : m_renderDevice(other.m_renderDevice),
+      m_cmdList(std::move(other.m_cmdList)),
+      m_allocator(other.m_allocator),
+      m_lastSubmitFence(other.m_lastSubmitFence),
+      m_bufferAllocator(std::move(other.m_bufferAllocator)),
+      m_graphicsRootSignature(other.m_graphicsRootSignature),
+      m_computeRootSignature(other.m_computeRootSignature),
+      m_dynamicDescriptorHeap(std::move(other.m_dynamicDescriptorHeap)) {
+    other.m_allocator             = nullptr;
+    other.m_graphicsRootSignature = nullptr;
+    other.m_computeRootSignature  = nullptr;
+}
+
+ink::CommandBuffer::~CommandBuffer() noexcept {
+    if (m_allocator != nullptr)
+        m_renderDevice->releaseCommandAllocator(m_lastSubmitFence, m_allocator);
+}
+
+auto ink::CommandBuffer::operator=(CommandBuffer &&other) noexcept -> CommandBuffer & {
+    if (this == &other)
+        return *this;
+
+    if (m_allocator != nullptr)
+        m_renderDevice->releaseCommandAllocator(m_lastSubmitFence, m_allocator);
+
+    m_renderDevice          = other.m_renderDevice;
+    m_cmdList               = std::move(other.m_cmdList);
+    m_allocator             = other.m_allocator;
+    m_lastSubmitFence       = other.m_lastSubmitFence;
+    m_bufferAllocator       = std::move(other.m_bufferAllocator);
+    m_graphicsRootSignature = other.m_graphicsRootSignature;
+    m_computeRootSignature  = other.m_computeRootSignature;
+    m_dynamicDescriptorHeap = std::move(other.m_dynamicDescriptorHeap);
+
+    other.m_allocator             = nullptr;
+    other.m_graphicsRootSignature = nullptr;
+    other.m_computeRootSignature  = nullptr;
+
+    return *this;
+}
+
+auto ink::CommandBuffer::submit() -> void {
+    m_cmdList->Close();
+
+    { // Submit command list.
+        ID3D12CommandList *list = m_cmdList.Get();
+        m_renderDevice->m_commandQueue->ExecuteCommandLists(1, &list);
+    }
+
+    // Acquire fence value.
+    m_lastSubmitFence = m_renderDevice->signalFence();
+
+    // Clean up temporary buffer allocator.
+    m_bufferAllocator.reset(m_lastSubmitFence);
+
+    // Clean up root signature.
+    m_dynamicDescriptorHeap.reset(m_lastSubmitFence);
+    m_graphicsRootSignature = nullptr;
+    m_computeRootSignature  = nullptr;
+
+    // Reset command allocator.
+    m_renderDevice->releaseCommandAllocator(m_lastSubmitFence, m_allocator);
+    m_allocator = nullptr; // Make reset() available if exception is thrown.
+    m_allocator = m_renderDevice->acquireCommandAllocator();
+    m_cmdList->Reset(m_allocator, nullptr);
+}
+
+auto ink::CommandBuffer::reset() -> void {
+    m_cmdList->Close();
+
+    // Clean up temporary buffer allocaator.
+    m_bufferAllocator.reset(m_lastSubmitFence);
+
+    // Clean up root signature.
+    m_dynamicDescriptorHeap.reset(m_lastSubmitFence);
+    m_graphicsRootSignature = nullptr;
+    m_computeRootSignature  = nullptr;
+
+    if (m_allocator == nullptr)
+        m_allocator = m_renderDevice->acquireCommandAllocator();
+    else
+        m_allocator->Reset();
+
+    m_cmdList->Reset(m_allocator, nullptr);
+}
+
+auto ink::CommandBuffer::waitForComplete() const -> void {
+    m_renderDevice->sync(m_lastSubmitFence);
+}

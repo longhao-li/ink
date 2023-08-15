@@ -197,4 +197,117 @@ private:
     std::vector<DynamicBufferPage *> m_retiredPages;
 };
 
+class CommandBuffer {
+private:
+    /// @brief
+    ///   For internal usage. Create a new command buffer.
+    ///
+    /// @param renderDevice
+    ///   The render device that is used to create this command buffer.
+    /// @param device
+    ///   The D3D12 device that is used to create this command buffer.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to create new command list.
+    CommandBuffer(RenderDevice &renderDevice, ID3D12Device5 *device);
+
+    friend class RenderDevice;
+
+public:
+    /// @brief
+    ///   Create an empty command buffer.
+    InkExport CommandBuffer() noexcept;
+
+    /// @brief
+    ///   Copy constructor of command buffer is disabled.
+    CommandBuffer(const CommandBuffer &) = delete;
+
+    /// @brief
+    ///   Move constructor of command buffer.
+    ///
+    /// @param other
+    ///   The command buffer to be moved. The moved command buffer will be invalidated.
+    InkExport CommandBuffer(CommandBuffer &&other) noexcept;
+
+    /// @brief
+    ///   Destroy this command buffer.
+    InkExport ~CommandBuffer() noexcept;
+
+    /// @brief
+    ///   Copy assignment of command buffer is disabled.
+    auto operator=(const CommandBuffer &) = delete;
+
+    /// @brief
+    ///   Move assignment of command buffer.
+    ///
+    /// @param other
+    ///   The command buffer to be moved. The moved command buffer will be invalidated.
+    InkExport auto operator=(CommandBuffer &&other) noexcept -> CommandBuffer &;
+
+    /// @brief
+    ///   Submit this command buffer to start executing on GPU. This method will automatically reset
+    ///   this command buffer once submitted tasks to GPU.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to reset this command buffer.
+    InkExport auto submit() -> void;
+
+    /// @brief
+    ///   Reset this command buffer and clean up all recorded commands.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to acquire new resources.
+    InkExport auto reset() -> void;
+
+    /// @brief
+    ///   Wait for last submission to be completed.
+    ///
+    /// @throw SystemErrorException
+    ///   Thrown if failed to create synchronization event handle.
+    InkExport auto waitForComplete() const -> void;
+
+    /// @brief
+    ///   Transition the specified GPU resource to new resource state.
+    ///
+    /// @param resource
+    ///   The resource to be transitioned.
+    /// @param newState
+    ///   Expected resource state to be transitioned.
+    InkExport auto transition(GpuResource &resource, D3D12_RESOURCE_STATES newState) noexcept
+        -> void;
+
+private:
+    /// @brief
+    ///   The render device that this command buffer is created from.
+    RenderDevice *m_renderDevice;
+
+    /// @brief
+    ///   D3D12 direct command list.
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList4> m_cmdList;
+
+    /// @brief
+    ///   Command allocator for current command list.
+    ID3D12CommandAllocator *m_allocator;
+
+    /// @brief
+    ///   Fence value that indicates when the last submittion will be finished.
+    std::uint64_t m_lastSubmitFence;
+
+    /// @brief
+    ///   Temporary buffer allocator for this command buffer.
+    DynamicBufferAllocator m_bufferAllocator;
+
+    /// @brief
+    ///   Current graphics root signature.
+    RootSignature *m_graphicsRootSignature;
+
+    /// @brief
+    ///   Current compute root signature.
+    RootSignature *m_computeRootSignature;
+
+    /// @brief
+    ///   Dynamic descriptor heap, for both CBV/SRV/UAV heap and sampler heap.
+    DynamicDescriptorHeap m_dynamicDescriptorHeap;
+};
+
 } // namespace ink
