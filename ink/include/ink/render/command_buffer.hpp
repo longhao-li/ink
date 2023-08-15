@@ -213,7 +213,7 @@ enum class StoreAction {
 
 struct RenderPass {
     /// @brief
-    ///   Number of render targets to be set for this render pass. Must be less than or equal to 8.s
+    ///   Number of render targets to be set for this render pass. Must be less than or equal to 8.
     std::uint32_t renderTargetCount;
 
     /// @brief

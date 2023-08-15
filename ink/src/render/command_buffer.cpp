@@ -338,7 +338,15 @@ auto ink::CommandBuffer::transition(GpuResource &resource, D3D12_RESOURCE_STATES
     m_cmdList->ResourceBarrier(barrierCount, barriers.data());
 }
 
+// MSVC analyzer seems to incorrectly report the C28020 warning.
+#if !defined(__clang__) && defined(_MSC_VER)
+#    pragma warning(push)
+#    pragma warning(disable : 28020)
+#endif
+
 auto ink::CommandBuffer::beginRenderPass(const RenderPass &renderPass) noexcept -> void {
+    assert(renderPass.renderTargetCount <= 8);
+
     { // Transition states.
         std::array<D3D12_RESOURCE_BARRIER, 18> barriers;
         std::uint32_t                          count = 0;
@@ -523,6 +531,10 @@ auto ink::CommandBuffer::endRenderPass() noexcept -> void {
     if (count > 0)
         m_cmdList->ResourceBarrier(count, barriers.data());
 }
+
+#if !defined(__clang__) && defined(_MSC_VER)
+#    pragma warning(pop)
+#endif
 
 auto ink::CommandBuffer::copy(GpuResource &src, GpuResource &dst) noexcept -> void {
     { // Transition resource state.
