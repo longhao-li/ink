@@ -37,7 +37,7 @@ if(INK_BUILD_STATIC_LIBS)
         add_library(ink::ink ALIAS ink-static)
     endif()
 
-    # set_target_properties(ink-static PROPERTIES OUTPUT_NAME "ink")
+    set_target_properties(ink-static PROPERTIES OUTPUT_NAME "libink")
 
     # Precompiled header.
     target_precompile_headers(ink-static PRIVATE ${INK_PRECOMPILED_HEADERS})
