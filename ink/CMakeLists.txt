@@ -2,6 +2,9 @@ if(NOT INK_BUILD_STATIC_LIBS AND NOT INK_BUILD_STATIC_LIBS)
     message(FATAL_ERROR "You must build at least one of the static or shared libraries.")
 endif()
 
+include("FindD3D12")
+find_package(D3D12 REQUIRED)
+
 file(GLOB_RECURSE INK_HEADER_FILES "*.hpp")
 file(GLOB_RECURSE INK_SOURCE_FILES "*.cpp")
 
@@ -17,7 +20,6 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 else()
     set(INK_COMPILER_OPTIONS)
 endif()
-
 
 # Precompiled header.
 set(
@@ -43,6 +45,7 @@ if(INK_BUILD_STATIC_LIBS)
     # Include directories.
     target_include_directories(
         ink-static PUBLIC
+        ${D3D12_INCLUDE_DIRS}
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
     )
@@ -51,7 +54,7 @@ if(INK_BUILD_STATIC_LIBS)
     target_compile_definitions(ink-static PRIVATE "UNICODE" "_UNICODE" "WIN32_LEAN_AND_MEAN" "NOMINMAX")
 
     # Link external libraries.
-    target_link_libraries(ink-static PUBLIC "d3d12" "dxgi" "d3dcompiler")
+    target_link_libraries(ink-static PUBLIC ${D3D12_LIBRARIES})
 
     # Compiler options.
     target_compile_options(ink-static PRIVATE ${INK_COMPILER_OPTIONS})
@@ -78,6 +81,7 @@ if(INK_BUILD_SHARED_LIBS)
     # Include directories.
     target_include_directories(
         ink-shared PUBLIC
+        ${D3D12_INCLUDE_DIRS}
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
     )
@@ -90,7 +94,7 @@ if(INK_BUILD_SHARED_LIBS)
     )
 
     # Link external libraries.
-    target_link_libraries(ink-shared PUBLIC "d3d12" "dxgi" "d3dcompiler")
+    target_link_libraries(ink-shared PUBLIC ${D3D12_LIBRARIES})
 
     # Compiler options.
     target_compile_options(ink-shared PRIVATE ${INK_COMPILER_OPTIONS})
