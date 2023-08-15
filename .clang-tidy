@@ -1,2 +1,2 @@
 ---
-Checks: 'clang-diagnostic-*,clang-analyzer-*,modernize-*,performance-*,-performance-no-int-to-ptr'
+Checks: 'clang-diagnostic-*,clang-analyzer-*,modernize-*,performance-*,-performance-no-int-to-ptr,-modernize-avoid-c-arrays'

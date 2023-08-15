@@ -193,7 +193,8 @@ ink::CommandBuffer::CommandBuffer(RenderDevice &renderDevice, ID3D12Device5 *dev
       m_bufferAllocator(renderDevice),
       m_graphicsRootSignature(),
       m_computeRootSignature(),
-      m_dynamicDescriptorHeap(renderDevice, device) {
+      m_dynamicDescriptorHeap(renderDevice, device),
+      m_renderPass() {
     HRESULT hr = device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_allocator, nullptr,
                                            IID_PPV_ARGS(m_cmdList.GetAddressOf()));
     if (FAILED(hr)) {
@@ -211,7 +212,8 @@ ink::CommandBuffer::CommandBuffer() noexcept
       m_bufferAllocator(),
       m_graphicsRootSignature(),
       m_computeRootSignature(),
-      m_dynamicDescriptorHeap() {}
+      m_dynamicDescriptorHeap(),
+      m_renderPass() {}
 
 ink::CommandBuffer::CommandBuffer(CommandBuffer &&other) noexcept
     : m_renderDevice(other.m_renderDevice),
@@ -221,7 +223,8 @@ ink::CommandBuffer::CommandBuffer(CommandBuffer &&other) noexcept
       m_bufferAllocator(std::move(other.m_bufferAllocator)),
       m_graphicsRootSignature(other.m_graphicsRootSignature),
       m_computeRootSignature(other.m_computeRootSignature),
-      m_dynamicDescriptorHeap(std::move(other.m_dynamicDescriptorHeap)) {
+      m_dynamicDescriptorHeap(std::move(other.m_dynamicDescriptorHeap)),
+      m_renderPass(other.m_renderPass) {
     other.m_allocator             = nullptr;
     other.m_graphicsRootSignature = nullptr;
     other.m_computeRootSignature  = nullptr;
@@ -247,6 +250,7 @@ auto ink::CommandBuffer::operator=(CommandBuffer &&other) noexcept -> CommandBuf
     m_graphicsRootSignature = other.m_graphicsRootSignature;
     m_computeRootSignature  = other.m_computeRootSignature;
     m_dynamicDescriptorHeap = std::move(other.m_dynamicDescriptorHeap);
+    m_renderPass            = other.m_renderPass;
 
     other.m_allocator             = nullptr;
     other.m_graphicsRootSignature = nullptr;
@@ -302,4 +306,372 @@ auto ink::CommandBuffer::reset() -> void {
 
 auto ink::CommandBuffer::waitForComplete() const -> void {
     m_renderDevice->sync(m_lastSubmitFence);
+}
+
+auto ink::CommandBuffer::transition(GpuResource &resource, D3D12_RESOURCE_STATES newState) noexcept
+    -> void {
+    if (resource.state() == newState)
+        return;
+
+    std::array<D3D12_RESOURCE_BARRIER, 2> barriers;
+    std::uint32_t                         barrierCount = 1U;
+
+    const auto oldState = resource.state();
+
+    barriers[0].Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barriers[0].Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    barriers[0].Transition.pResource   = resource.m_resource.Get();
+    barriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    barriers[0].Transition.StateBefore = oldState;
+    barriers[0].Transition.StateAfter  = newState;
+
+    resource.m_usageState = newState;
+
+    if (newState == D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
+        barriers[1].Type          = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+        barriers[1].Flags         = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+        barriers[1].UAV.pResource = resource.m_resource.Get();
+
+        barrierCount = 2U;
+    }
+
+    m_cmdList->ResourceBarrier(barrierCount, barriers.data());
+}
+
+auto ink::CommandBuffer::beginRenderPass(const RenderPass &renderPass) noexcept -> void {
+    { // Transition states.
+        std::array<D3D12_RESOURCE_BARRIER, 18> barriers;
+        std::uint32_t                          count = 0;
+
+        for (std::uint32_t i = 0; i < renderPass.renderTargetCount; ++i) {
+            const auto &info = renderPass.renderTargets[i];
+            if ((info.renderTarget->state() & info.stateBefore) != info.stateBefore) {
+                const auto oldState = info.renderTarget->state();
+                const auto newState = info.stateBefore;
+
+                auto &barrier                  = barriers[count++];
+                barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+                barrier.Transition.pResource   = info.renderTarget->m_resource.Get();
+                barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+                barrier.Transition.StateBefore = oldState;
+                barrier.Transition.StateAfter  = newState;
+
+                if ((newState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS) &&
+                    !(oldState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS)) {
+                    auto &uavBarrier         = barriers[count++];
+                    uavBarrier.Type          = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                    uavBarrier.Flags         = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+                    uavBarrier.UAV.pResource = info.renderTarget->m_resource.Get();
+                }
+            }
+        }
+
+        if ((renderPass.depthTarget.depthTarget->state() & renderPass.depthTarget.stateBefore) !=
+            renderPass.depthTarget.stateBefore) {
+            const auto oldState = renderPass.depthTarget.depthTarget->state();
+            const auto newState = renderPass.depthTarget.stateBefore;
+
+            auto &barrier                  = barriers[count++];
+            barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+            barrier.Transition.pResource   = renderPass.depthTarget.depthTarget->m_resource.Get();
+            barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            barrier.Transition.StateBefore = oldState;
+            barrier.Transition.StateAfter  = newState;
+
+            if ((newState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS) &&
+                !(oldState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS)) {
+                auto &uavBarrier         = barriers[count++];
+                uavBarrier.Type          = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                uavBarrier.Flags         = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+                uavBarrier.UAV.pResource = renderPass.depthTarget.depthTarget->m_resource.Get();
+            }
+        }
+
+        if (count > 0)
+            m_cmdList->ResourceBarrier(count, barriers.data());
+    }
+
+    // Begin render pass.
+    std::array<D3D12_RENDER_PASS_RENDER_TARGET_DESC, 8> renderTargets;
+    D3D12_RENDER_PASS_DEPTH_STENCIL_DESC                depthTarget;
+    D3D12_RENDER_PASS_DEPTH_STENCIL_DESC               *depthTargetPtr = nullptr;
+
+    for (std::uint32_t i = 0; i < renderPass.renderTargetCount; ++i) {
+        const auto &info               = renderPass.renderTargets[i];
+        renderTargets[i].cpuDescriptor = info.renderTarget->renderTargetView();
+
+        // Begin access info.
+        renderTargets[i].BeginningAccess.Type =
+            static_cast<D3D12_RENDER_PASS_BEGINNING_ACCESS_TYPE>(info.loadAction);
+        renderTargets[i].BeginningAccess.Clear.ClearValue.Format = info.renderTarget->pixelFormat();
+
+        const Color &clearColor = info.renderTarget->clearColor();
+        renderTargets[i].BeginningAccess.Clear.ClearValue.Color[0] = clearColor.red;
+        renderTargets[i].BeginningAccess.Clear.ClearValue.Color[1] = clearColor.green;
+        renderTargets[i].BeginningAccess.Clear.ClearValue.Color[2] = clearColor.blue;
+        renderTargets[i].BeginningAccess.Clear.ClearValue.Color[3] = clearColor.alpha;
+
+        // End access info.
+        renderTargets[i].EndingAccess.Type =
+            static_cast<D3D12_RENDER_PASS_ENDING_ACCESS_TYPE>(info.storeAction);
+        renderTargets[i].EndingAccess.Resolve = {};
+    }
+
+    if (renderPass.depthTarget.depthTarget != nullptr) { // Set depth target info.
+        const auto &info          = renderPass.depthTarget;
+        depthTarget.cpuDescriptor = info.depthTarget->depthStencilView();
+
+        // Begin access info.
+        depthTarget.DepthBeginningAccess.Type =
+            static_cast<D3D12_RENDER_PASS_BEGINNING_ACCESS_TYPE>(info.depthLoadAction);
+        depthTarget.DepthBeginningAccess.Clear.ClearValue.Format = info.depthTarget->pixelFormat();
+        depthTarget.DepthBeginningAccess.Clear.ClearValue.DepthStencil.Depth =
+            info.depthTarget->clearDepth();
+        depthTarget.DepthBeginningAccess.Clear.ClearValue.DepthStencil.Stencil =
+            info.depthTarget->clearStencil();
+        depthTarget.StencilBeginningAccess.Type =
+            static_cast<D3D12_RENDER_PASS_BEGINNING_ACCESS_TYPE>(info.stencilLoadAction);
+        depthTarget.StencilBeginningAccess.Clear.ClearValue.Format =
+            info.depthTarget->pixelFormat();
+        depthTarget.StencilBeginningAccess.Clear.ClearValue.DepthStencil.Depth =
+            info.depthTarget->clearDepth();
+        depthTarget.StencilBeginningAccess.Clear.ClearValue.DepthStencil.Stencil =
+            info.depthTarget->clearStencil();
+
+        // End access info.
+        depthTarget.DepthEndingAccess.Type =
+            static_cast<D3D12_RENDER_PASS_ENDING_ACCESS_TYPE>(info.depthStoreAction);
+        depthTarget.DepthEndingAccess.Resolve = {};
+        depthTarget.StencilEndingAccess.Type =
+            static_cast<D3D12_RENDER_PASS_ENDING_ACCESS_TYPE>(info.stencilStoreAction);
+        depthTarget.StencilEndingAccess.Resolve = {};
+
+        depthTargetPtr = &depthTarget;
+    }
+
+    m_cmdList->BeginRenderPass(renderPass.renderTargetCount, renderTargets.data(), depthTargetPtr,
+                               D3D12_RENDER_PASS_FLAG_NONE);
+
+    m_renderPass = renderPass;
+}
+
+auto ink::CommandBuffer::endRenderPass() noexcept -> void {
+    m_cmdList->EndRenderPass();
+
+    // Transition resource states.
+    std::array<D3D12_RESOURCE_BARRIER, 18> barriers;
+    std::uint32_t                          count = 0;
+
+    for (std::uint32_t i = 0; i < m_renderPass.renderTargetCount; ++i) {
+        const auto oldState = m_renderPass.renderTargets[i].renderTarget->state();
+        const auto newState = m_renderPass.renderTargets[i].stateAfter;
+
+        if ((oldState & newState) == newState)
+            continue;
+
+        auto &barrier                = barriers[count++];
+        barrier.Type                 = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barrier.Flags                = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+        barrier.Transition.pResource = m_renderPass.renderTargets[i].renderTarget->m_resource.Get();
+        barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        barrier.Transition.StateBefore = oldState;
+        barrier.Transition.StateAfter  = newState;
+
+        if ((newState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS) &&
+            !(oldState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS)) {
+            auto &uavBarrier         = barriers[count++];
+            uavBarrier.Type          = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+            uavBarrier.Flags         = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+            uavBarrier.UAV.pResource = m_renderPass.renderTargets[i].renderTarget->m_resource.Get();
+        }
+    }
+
+    // Transition depth target.
+    if (m_renderPass.depthTarget.depthTarget != nullptr) {
+        const auto oldState = m_renderPass.depthTarget.depthTarget->state();
+        const auto newState = m_renderPass.depthTarget.stateAfter;
+
+        if ((oldState & newState) != newState) {
+            auto &barrier                  = barriers[count++];
+            barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+            barrier.Transition.pResource   = m_renderPass.depthTarget.depthTarget->m_resource.Get();
+            barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            barrier.Transition.StateBefore = oldState;
+            barrier.Transition.StateAfter  = newState;
+
+            if ((newState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS) &&
+                !(oldState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS)) {
+                auto &uavBarrier         = barriers[count++];
+                uavBarrier.Type          = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                uavBarrier.Flags         = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+                uavBarrier.UAV.pResource = m_renderPass.depthTarget.depthTarget->m_resource.Get();
+            }
+        }
+    }
+
+    if (count > 0)
+        m_cmdList->ResourceBarrier(count, barriers.data());
+}
+
+auto ink::CommandBuffer::copy(GpuResource &src, GpuResource &dst) noexcept -> void {
+    { // Transition resource state.
+        std::array<D3D12_RESOURCE_BARRIER, 2> barriers;
+        std::uint32_t                         count = 0;
+
+        if (!(src.state() & D3D12_RESOURCE_STATE_COPY_SOURCE)) {
+            auto &barrier                  = barriers[count++];
+            barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+            barrier.Transition.pResource   = src.m_resource.Get();
+            barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            barrier.Transition.StateBefore = src.state();
+            barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        }
+
+        if (!(dst.state() & D3D12_RESOURCE_STATE_COPY_DEST)) {
+            auto &barrier                  = barriers[count++];
+            barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+            barrier.Transition.pResource   = dst.m_resource.Get();
+            barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            barrier.Transition.StateBefore = dst.state();
+            barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_COPY_DEST;
+        }
+
+        if (count > 0)
+            m_cmdList->ResourceBarrier(count, barriers.data());
+    }
+
+    m_cmdList->CopyResource(dst.m_resource.Get(), src.m_resource.Get());
+}
+
+auto ink::CommandBuffer::copyBuffer(GpuResource &src,
+                                    std::size_t  srcOffset,
+                                    GpuResource &dst,
+                                    std::size_t  dstOffset,
+                                    std::size_t  size) noexcept -> void {
+    { // Transition resource state.
+        std::array<D3D12_RESOURCE_BARRIER, 2> barriers;
+        std::uint32_t                         count = 0;
+
+        if (!(src.state() & D3D12_RESOURCE_STATE_COPY_SOURCE)) {
+            auto &barrier                  = barriers[count++];
+            barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+            barrier.Transition.pResource   = src.m_resource.Get();
+            barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            barrier.Transition.StateBefore = src.state();
+            barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        }
+
+        if (!(dst.state() & D3D12_RESOURCE_STATE_COPY_DEST)) {
+            auto &barrier                  = barriers[count++];
+            barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+            barrier.Transition.pResource   = dst.m_resource.Get();
+            barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            barrier.Transition.StateBefore = dst.state();
+            barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_COPY_DEST;
+        }
+
+        if (count > 0)
+            m_cmdList->ResourceBarrier(count, barriers.data());
+    }
+
+    m_cmdList->CopyBufferRegion(dst.m_resource.Get(), dstOffset, src.m_resource.Get(), srcOffset,
+                                size);
+}
+
+auto ink::CommandBuffer::copyBuffer(const void  *src,
+                                    GpuResource &dst,
+                                    std::size_t  dstOffset,
+                                    std::size_t  size) -> void {
+    DynamicBufferAllocation allocation(m_bufferAllocator.allocate(size));
+    std::memcpy(allocation.data, src, size);
+
+    // Transition state.
+    if (!(dst.state() & D3D12_RESOURCE_STATE_COPY_DEST))
+        this->transition(dst, D3D12_RESOURCE_STATE_COPY_DEST);
+
+    m_cmdList->CopyBufferRegion(dst.m_resource.Get(), dstOffset,
+                                allocation.resource->m_resource.Get(), allocation.offset, size);
+}
+
+auto ink::CommandBuffer::copyTexture(const void   *src,
+                                     DXGI_FORMAT   srcFormat,
+                                     std::size_t   srcRowPitch,
+                                     std::uint32_t width,
+                                     std::uint32_t height,
+                                     PixelBuffer  &dst,
+                                     std::uint32_t subresource) -> void {
+    // Align up row pitch.
+    const std::uint32_t rowPitch  = (std::uint32_t(srcRowPitch) + 0xFF) & ~std::uint32_t(0xFF);
+    const std::size_t   allocSize = (std::size_t(height) * rowPitch + 511) & ~std::size_t(511);
+
+    DynamicBufferAllocation allocation(m_bufferAllocator.allocate(allocSize, 512U));
+
+    { // Copy data to temporary upload buffer.
+        auto       *buffer = static_cast<std::uint8_t *>(allocation.data);
+        const auto *srcPtr = static_cast<const std::uint8_t *>(src);
+
+        for (std::uint32_t i = 0; i < height; ++i) {
+            std::memcpy(buffer, srcPtr, srcRowPitch);
+            buffer += rowPitch;
+            srcPtr += srcRowPitch;
+        }
+    }
+
+    // Copy data to texture.
+    D3D12_TEXTURE_COPY_LOCATION srcLoc;
+    srcLoc.pResource                          = allocation.resource->m_resource.Get();
+    srcLoc.Type                               = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    srcLoc.PlacedFootprint.Offset             = allocation.offset;
+    srcLoc.PlacedFootprint.Footprint.Format   = srcFormat;
+    srcLoc.PlacedFootprint.Footprint.Width    = width;
+    srcLoc.PlacedFootprint.Footprint.Height   = height;
+    srcLoc.PlacedFootprint.Footprint.Depth    = 1;
+    srcLoc.PlacedFootprint.Footprint.RowPitch = rowPitch;
+
+    D3D12_TEXTURE_COPY_LOCATION dstLoc;
+    dstLoc.pResource        = dst.m_resource.Get();
+    dstLoc.Type             = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    dstLoc.SubresourceIndex = subresource;
+
+    if (!(dst.state() & D3D12_RESOURCE_STATE_COPY_DEST))
+        this->transition(dst, D3D12_RESOURCE_STATE_COPY_DEST);
+
+    m_cmdList->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, nullptr);
+}
+
+auto ink::CommandBuffer::setGraphicsRootSignature(RootSignature &rootSig) noexcept -> void {
+    if (m_graphicsRootSignature == &rootSig)
+        return;
+
+    m_graphicsRootSignature = &rootSig;
+    m_dynamicDescriptorHeap.parseGraphicsRootSignature(rootSig);
+    m_cmdList->SetGraphicsRootSignature(rootSig.rootSignature());
+}
+
+auto ink::CommandBuffer::setComputeRootSignature(RootSignature &rootSig) noexcept -> void {
+    if (m_computeRootSignature == &rootSig)
+        return;
+
+    m_computeRootSignature = &rootSig;
+    m_dynamicDescriptorHeap.parseComputeRootSignature(rootSig);
+    m_cmdList->SetComputeRootSignature(rootSig.rootSignature());
+}
+
+auto ink::CommandBuffer::setGraphicsDescriptor(std::uint32_t rootParam,
+                                               std::uint32_t offset,
+                                               CpuDescriptor handle) noexcept -> void {
+    m_dynamicDescriptorHeap.bindGraphicsDescriptor(rootParam, offset, handle);
+}
+
+auto ink::CommandBuffer::setComputeDescriptor(std::uint32_t rootParam,
+                                              std::uint32_t offset,
+                                              CpuDescriptor handle) noexcept -> void {
+    m_dynamicDescriptorHeap.bindComputeDescriptor(rootParam, offset, handle);
 }
