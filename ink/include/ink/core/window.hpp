@@ -495,7 +495,7 @@ public:
     template <typename Func,
               typename = std::enable_if_t<std::is_assignable_v<RestoreFunc, Func &&>>>
     auto setRestoreCallback(Func &&func) -> void {
-        m_minimizeCallback = std::forward<Func>(func);
+        m_restoreCallback = std::forward<Func>(func);
     }
 
     /// @brief
@@ -760,6 +760,16 @@ public:
     /// @return
     ///   Number of back buffers in this swap chain.
     [[nodiscard]] auto bufferCount() const noexcept -> std::uint32_t { return m_bufferCount; }
+
+    /// @brief
+    ///   Set clear color for all back buffers.
+    ///
+    /// @param color
+    ///   New clear color to be set for back buffers.
+    auto setClearColor(const Color &color) noexcept -> void {
+        for (auto &backBuffer : m_backBuffers)
+            backBuffer.clearColor(color);
+    }
 
 private:
     /// @brief

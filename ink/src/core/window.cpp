@@ -298,6 +298,15 @@ ink::Window::~Window() noexcept {
     }
 }
 
+auto ink::Window::title(std::string_view newTitle) noexcept -> void {
+    if (m_hWnd == nullptr)
+        return;
+
+    std::wstring wideTitle(toWideString(newTitle));
+    if (SetWindowTextW(m_hWnd, wideTitle.c_str()))
+        m_title = newTitle;
+}
+
 auto ink::Window::resize(WindowSize frame) noexcept -> void {
     if (m_hWnd == nullptr)
         return;
