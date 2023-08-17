@@ -674,6 +674,94 @@ auto ink::CommandBuffer::copyTexture(const void   *src,
     m_cmdList->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, nullptr);
 }
 
+auto ink::CommandBuffer::setVertexBuffer(std::uint32_t slot,
+                                         std::uint64_t gpuAddress,
+                                         std::uint32_t vertexCount,
+                                         std::uint32_t stride) noexcept -> void {
+    const D3D12_VERTEX_BUFFER_VIEW vbv{
+        /* BufferLocation = */ gpuAddress,
+        /* SizeInBytes    = */ vertexCount * stride,
+        /* StrideInBytes  = */ stride,
+    };
+
+    m_cmdList->IASetVertexBuffers(slot, 1, &vbv);
+}
+
+auto ink::CommandBuffer::setVertexBuffer(std::uint32_t           slot,
+                                         const StructuredBuffer &buffer) noexcept -> void {
+    const D3D12_VERTEX_BUFFER_VIEW vbv{
+        /* BufferLocation = */ buffer.gpuAddress(),
+        /* SizeInBytes    = */ buffer.elementSize() * buffer.elementCount(),
+        /* StrideInBytes  = */ buffer.elementSize(),
+    };
+
+    m_cmdList->IASetVertexBuffers(slot, 1, &vbv);
+}
+
+auto ink::CommandBuffer::setVertexBuffer(std::uint32_t slot,
+                                         const void   *data,
+                                         std::uint32_t vertexCount,
+                                         std::uint32_t stride) -> void {
+    const std::size_t       size = std::size_t(vertexCount) * stride;
+    DynamicBufferAllocation allocation(m_bufferAllocator.allocate(size));
+    std::memcpy(allocation.data, data, size);
+
+    const D3D12_VERTEX_BUFFER_VIEW vbv{
+        /* BufferLocation = */ allocation.gpuAddress,
+        /* SizeInBytes    = */ static_cast<UINT>(size),
+        /* StrideInBytes  = */ stride,
+    };
+
+    m_cmdList->IASetVertexBuffers(slot, 1, &vbv);
+}
+
+auto ink::CommandBuffer::setIndexBuffer(std::uint64_t gpuAddress,
+                                        std::uint32_t indexCount,
+                                        std::uint32_t stride) noexcept -> void {
+    assert((stride == 2 || stride == 4) && "Index should either be uint16 or uint32.");
+    const DXGI_FORMAT format = (stride == 2) ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
+    const D3D12_INDEX_BUFFER_VIEW ibv{
+        /* BufferLocation = */ gpuAddress,
+        /* SizeInBytes    = */ indexCount * stride,
+        /* Format         = */ format,
+    };
+
+    m_cmdList->IASetIndexBuffer(&ibv);
+}
+
+auto ink::CommandBuffer::setIndexBuffer(const StructuredBuffer &buffer) noexcept -> void {
+    const std::uint32_t stride = buffer.elementSize();
+    assert((stride == 2 || stride == 4) && "Index should either be uint16 or uint32.");
+
+    const DXGI_FORMAT format = (stride == 2) ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
+    const D3D12_INDEX_BUFFER_VIEW ibv{
+        /* BufferLocation = */ buffer.gpuAddress(),
+        /* SizeInBytes    = */ buffer.elementCount() * stride,
+        /* Format         = */ format,
+    };
+
+    m_cmdList->IASetIndexBuffer(&ibv);
+}
+
+auto ink::CommandBuffer::setIndexBuffer(const void   *data,
+                                        std::uint32_t indexCount,
+                                        std::uint32_t stride) -> void {
+    assert((stride == 2 || stride == 4) && "Index should either be uint16 or uint32.");
+
+    const std::size_t       size = std::size_t(indexCount) * stride;
+    DynamicBufferAllocation allocation(m_bufferAllocator.allocate(size));
+    std::memcpy(allocation.data, data, size);
+
+    const DXGI_FORMAT format = (stride == 2) ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
+    const D3D12_INDEX_BUFFER_VIEW ibv{
+        /* BufferLocation = */ allocation.gpuAddress,
+        /* SizeInBytes    = */ static_cast<UINT>(size),
+        /* Format         = */ format,
+    };
+
+    m_cmdList->IASetIndexBuffer(&ibv);
+}
+
 auto ink::CommandBuffer::setGraphicsRootSignature(RootSignature &rootSig) noexcept -> void {
     if (m_graphicsRootSignature == &rootSig)
         return;
@@ -702,4 +790,60 @@ auto ink::CommandBuffer::setComputeDescriptor(std::uint32_t rootParam,
                                               std::uint32_t offset,
                                               CpuDescriptor handle) noexcept -> void {
     m_dynamicDescriptorHeap.bindComputeDescriptor(rootParam, offset, handle);
+}
+
+auto ink::CommandBuffer::setGraphicsConstantBuffer(std::uint32_t rootParam,
+                                                   const void   *data,
+                                                   std::size_t   size) -> void {
+    DynamicBufferAllocation allocation(m_bufferAllocator.allocate(size));
+    std::memcpy(allocation.data, data, size);
+    m_cmdList->SetGraphicsRootConstantBufferView(rootParam, allocation.gpuAddress);
+}
+
+auto ink::CommandBuffer::setComputeConstantBuffer(std::uint32_t rootParam,
+                                                  const void   *data,
+                                                  std::size_t   size) -> void {
+    DynamicBufferAllocation allocation(m_bufferAllocator.allocate(size));
+    std::memcpy(allocation.data, data, size);
+    m_cmdList->SetComputeRootConstantBufferView(rootParam, allocation.gpuAddress);
+}
+
+auto ink::CommandBuffer::setGraphicsConstantBuffer(std::uint32_t rootParam,
+                                                   std::uint32_t offset,
+                                                   const void   *data,
+                                                   std::size_t   size) -> void {
+    DynamicBufferAllocation allocation(m_bufferAllocator.allocate(size));
+    std::memcpy(allocation.data, data, size);
+    D3D12_CONSTANT_BUFFER_VIEW_DESC desc{allocation.gpuAddress, static_cast<UINT>(allocation.size)};
+    m_dynamicDescriptorHeap.bindGraphicsDescriptor(rootParam, offset, desc);
+}
+
+auto ink::CommandBuffer::setComputeConstantBuffer(std::uint32_t rootParam,
+                                                  std::uint32_t offset,
+                                                  const void   *data,
+                                                  std::size_t   size) -> void {
+    DynamicBufferAllocation allocation(m_bufferAllocator.allocate(size));
+    std::memcpy(allocation.data, data, size);
+    D3D12_CONSTANT_BUFFER_VIEW_DESC desc{allocation.gpuAddress, static_cast<UINT>(allocation.size)};
+    m_dynamicDescriptorHeap.bindComputeDescriptor(rootParam, offset, desc);
+}
+
+auto ink::CommandBuffer::draw(std::uint32_t vertexCount, std::uint32_t firstVertex) -> void {
+    m_dynamicDescriptorHeap.submitGraphicsDescriptors(m_cmdList.Get());
+    m_cmdList->DrawInstanced(vertexCount, 1, firstVertex, 0);
+}
+
+auto ink::CommandBuffer::drawIndexed(std::uint32_t indexCount,
+                                     std::uint32_t firstIndex,
+                                     std::uint32_t firstVertex) -> void {
+    m_dynamicDescriptorHeap.submitGraphicsDescriptors(m_cmdList.Get());
+    m_cmdList->DrawIndexedInstanced(indexCount, 1, firstIndex, static_cast<INT>(firstVertex), 0);
+}
+
+auto ink::CommandBuffer::dispatch(std::size_t groupX,
+                                  std::size_t groupY,
+                                  std::size_t groupZ) noexcept -> void {
+    m_dynamicDescriptorHeap.submitComputeDescriptors(m_cmdList.Get());
+    m_cmdList->Dispatch(static_cast<UINT>(groupX), static_cast<UINT>(groupY),
+                        static_cast<UINT>(groupZ));
 }

@@ -348,6 +348,103 @@ auto ink::RenderDevice::newSwapChain(HWND          window,
 
 auto ink::RenderDevice::newCommandBuffer() -> CommandBuffer { return {*this, m_device.Get()}; }
 
+auto ink::RenderDevice::newRootSignature(std::size_t                paramCount,
+                                         const D3D12_ROOT_PARAMETER params[]) -> RootSignature {
+    const D3D12_ROOT_SIGNATURE_DESC desc{
+        /* NumParameters     = */ static_cast<UINT>(paramCount),
+        /* pParameters       = */ params,
+        /* NumStaticSamplers = */ 0,
+        /* pStaticSamplers   = */ nullptr,
+        /* Flags             = */ D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+            D3D12_ROOT_SIGNATURE_FLAG_ALLOW_STREAM_OUTPUT,
+    };
+
+    return {m_device.Get(), desc};
+}
+
+auto ink::RenderDevice::newRootSignature(const D3D12_ROOT_SIGNATURE_DESC &desc) -> RootSignature {
+    return {m_device.Get(), desc};
+}
+
+auto ink::RenderDevice::newGraphicsPipeline(RootSignature                 &rootSignature,
+                                            D3D12_SHADER_BYTECODE          vertexShader,
+                                            D3D12_SHADER_BYTECODE          pixelShader,
+                                            D3D12_SHADER_BYTECODE          geometryShader,
+                                            std::size_t                    numInputElements,
+                                            const D3D12_INPUT_ELEMENT_DESC inputElements[],
+                                            std::size_t                    numRenderTargets,
+                                            const DXGI_FORMAT              renderTargetFormats[],
+                                            DXGI_FORMAT                    depthStencilFormat,
+                                            D3D12_FILL_MODE                fillMode,
+                                            D3D12_CULL_MODE                cullMode,
+                                            std::uint32_t sampleCount) -> GraphicsPipelineState {
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
+
+    desc.pRootSignature                        = rootSignature.rootSignature();
+    desc.VS                                    = vertexShader;
+    desc.PS                                    = pixelShader;
+    desc.GS                                    = geometryShader;
+    desc.InputLayout.pInputElementDescs        = inputElements;
+    desc.InputLayout.NumElements               = static_cast<UINT>(numInputElements);
+    desc.RasterizerState.FillMode              = fillMode;
+    desc.RasterizerState.CullMode              = cullMode;
+    desc.RasterizerState.FrontCounterClockwise = FALSE;
+    desc.RasterizerState.DepthBias             = D3D12_DEFAULT_DEPTH_BIAS;
+    desc.RasterizerState.DepthBiasClamp        = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
+    desc.RasterizerState.SlopeScaledDepthBias  = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
+    desc.RasterizerState.DepthClipEnable       = TRUE;
+    desc.RasterizerState.MultisampleEnable     = FALSE;
+    desc.RasterizerState.AntialiasedLineEnable = FALSE;
+    desc.RasterizerState.ForcedSampleCount     = 0;
+    desc.RasterizerState.ConservativeRaster    = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
+    desc.BlendState.AlphaToCoverageEnable      = FALSE;
+    desc.BlendState.IndependentBlendEnable     = FALSE;
+
+    for (auto &renderTarget : desc.BlendState.RenderTarget)
+        renderTarget = D3D12_RENDER_TARGET_BLEND_DESC{
+            /* BlendEnable           = */ FALSE,
+            /* LogicOpEnable         = */ FALSE,
+            /* SrcBlend              = */ D3D12_BLEND_ONE,
+            /* DestBlend             = */ D3D12_BLEND_ZERO,
+            /* BlendOp               = */ D3D12_BLEND_OP_ADD,
+            /* SrcBlendAlpha         = */ D3D12_BLEND_ONE,
+            /* DestBlendAlpha        = */ D3D12_BLEND_ZERO,
+            /* BlendOpAlpha          = */ D3D12_BLEND_OP_ADD,
+            /* LogicOp               = */ D3D12_LOGIC_OP_NOOP,
+            /* RenderTargetWriteMask = */ D3D12_COLOR_WRITE_ENABLE_ALL,
+        };
+
+    desc.DepthStencilState.DepthEnable   = FALSE;
+    desc.DepthStencilState.StencilEnable = FALSE;
+    desc.SampleMask                      = UINT_MAX;
+    desc.PrimitiveTopologyType           = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    desc.NumRenderTargets                = static_cast<UINT>(numRenderTargets);
+    std::memcpy(desc.RTVFormats, renderTargetFormats, sizeof(DXGI_FORMAT) * numRenderTargets);
+    desc.DSVFormat        = depthStencilFormat;
+    desc.SampleDesc.Count = sampleCount;
+
+    return {m_device.Get(), desc};
+}
+
+auto ink::RenderDevice::newGraphicsPipeline(const D3D12_GRAPHICS_PIPELINE_STATE_DESC &desc)
+    -> GraphicsPipelineState {
+    return {m_device.Get(), desc};
+}
+
+auto ink::RenderDevice::newComputePipeline(RootSignature        &rootSignature,
+                                           D3D12_SHADER_BYTECODE computeShader)
+    -> ComputePipelineState {
+    const D3D12_COMPUTE_PIPELINE_STATE_DESC desc{
+        /* pRootSignature = */ rootSignature.rootSignature(),
+        /* CS             = */ computeShader,
+        /* NodeMask       = */ 0,
+        /* CachedPSO      = */ {},
+        /* Flags          = */ D3D12_PIPELINE_STATE_FLAG_NONE,
+    };
+
+    return {m_device.Get(), desc};
+}
+
 auto ink::RenderDevice::sync(std::uint64_t fenceValue) const -> void {
     if (fenceValue <= m_fence->GetCompletedValue())
         return; // Already completed.

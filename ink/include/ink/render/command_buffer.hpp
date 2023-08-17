@@ -404,6 +404,119 @@ public:
                                std::uint32_t subresource) -> void;
 
     /// @brief
+    ///   Set a vertex buffer to the specified slot.
+    ///
+    /// @param slot
+    ///   Slot index to set the vertex buffer.
+    /// @param gpuAddress
+    ///   GPU address to start of the vertex buffer.
+    /// @param vertexCount
+    ///   Number of vertices to be set.
+    /// @param stride
+    ///   Stride size in byte of each vertex data element.
+    InkExport auto setVertexBuffer(std::uint32_t slot,
+                                   std::uint64_t gpuAddress,
+                                   std::uint32_t vertexCount,
+                                   std::uint32_t stride) noexcept -> void;
+
+    /// @brief
+    ///   Use a structured buffer as vertex buffer.
+    ///
+    /// @param slot
+    ///   Slot index to set the vertex buffer.
+    /// @param buffer
+    ///   The structured buffer to be used as vertex buffer.
+    InkExport auto setVertexBuffer(std::uint32_t slot, const StructuredBuffer &buffer) noexcept
+        -> void;
+
+    /// @brief
+    ///   Use a temporary upload buffer as vertex buffer.
+    /// @note
+    ///   It is slow to upload vertex data to GPU per-frame. Please consider using static vertex
+    ///   buffer if possible.
+    ///
+    /// @param slot
+    ///   Slot index to set the vertex buffer.
+    /// @param data
+    ///   Pointer to start of the vertex data.
+    /// @param vertexCount
+    ///   Number of vertices in this vertex buffer.
+    /// @param stride
+    ///   Stride size in byte of each vertex element.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to allocate temporary upload buffer.
+    InkExport auto setVertexBuffer(std::uint32_t slot,
+                                   const void   *data,
+                                   std::uint32_t vertexCount,
+                                   std::uint32_t stride) -> void;
+
+    /// @brief
+    ///   Set index buffer for current graphics pipeline. Only uint16 and uint32 could be used as
+    ///   index. Type of index is determined by the @p stride.
+    ///
+    /// @param gpuAddress
+    ///   GPU address to start of the index buffer.
+    /// @param indexCount
+    ///   Number of indices to be set.
+    /// @param stride
+    ///   Stride size in byte of each index. This value should either be 2 for uint16 index or 4 for
+    ///   uint32 index.
+    InkExport auto setIndexBuffer(std::uint64_t gpuAddress,
+                                  std::uint32_t indexCount,
+                                  std::uint32_t stride) noexcept -> void;
+
+    /// @brief
+    ///   Use a structured buffer as index buffer.
+    /// @note
+    ///   Only uint16 and uint32 formats could be used as index buffer indices. Index type is
+    ///   determined by structured buffer element size.
+    ///
+    /// @param buffer
+    ///   The structured buffer to be used as index buffer.
+    InkExport auto setIndexBuffer(const StructuredBuffer &buffer) noexcept -> void;
+
+    /// @brief
+    ///   Use a temporary upload buffer as index buffer. Only uint16 and uint32 could be used as
+    ///   index. Type of index is determined by the @p stride.
+    /// @note
+    ///   It is slow to upload index data to GPU per-frame. Please consider using static index
+    ///   buffer if possible.
+    ///
+    /// @param data
+    ///   Pointer to start of the index data.
+    /// @param indexCount
+    ///   Number of indices in the index buffer.
+    /// @param stride
+    ///   Stride size in byte of each index. This value should either be 2 for uint16 index or 4 for
+    ///   uint32 index.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to allocate temporary upload buffer.
+    InkExport auto setIndexBuffer(const void *data, std::uint32_t indexCount, std::uint32_t stride)
+        -> void;
+
+    /// @brief
+    ///   Set pipeline state for this command buffer.
+    /// @note
+    ///   Root signature will not be affected by this method. Root signature must be set manually.
+    ///
+    /// @param pso
+    ///   The pipeline state to be set.
+    auto setPipelineState(const PipelineState &pso) noexcept -> void {
+        m_cmdList->SetPipelineState(pso.pipelineState());
+    }
+
+    /// @brief
+    ///   Set primitive topology for current graphics pipeline.
+    ///
+    /// @param topology
+    ///   Primitive topology for current graphics pipeline.
+    auto setPrimitiveTopology(D3D12_PRIMITIVE_TOPOLOGY topology) noexcept -> void {
+        m_cmdList->IASetPrimitiveTopology(topology);
+    }
+
+    /// @brief
     ///   Set graphics root signature for current command buffer.
     ///
     /// @param rootSig
@@ -463,7 +576,7 @@ public:
         static_assert(sizeof(T) == sizeof(std::uint32_t), "Element must be 4 bytes in size.");
         static_assert(std::is_trivially_copyable_v<T>, "Element must be trivially copyable.");
         UINT constant; // Avoid alignment problem.
-        std::memcpy(&constant, &value, sizeof(UINT));
+        std::memcpy(&constant, std::addressof(value), sizeof(UINT));
         m_cmdList->SetGraphicsRoot32BitConstant(rootParam, constant, offset);
     }
 
@@ -488,6 +601,78 @@ public:
         std::memcpy(&constant, &value, sizeof(UINT));
         m_cmdList->SetComputeRoot32BitConstant(rootParam, constant, offset);
     }
+
+    /// @brief
+    ///   Copy data from system memory and set a constant buffer view at the specified root
+    ///   parameter.
+    ///
+    /// @param rootParam
+    ///   Index of the root parameter to set the constant buffer view.
+    /// @param data
+    ///   Start of data to be copied.
+    /// @param size
+    ///   Size in byte of data to be used as constant buffer.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to allocate temporary upload buffer.
+    InkExport auto
+    setGraphicsConstantBuffer(std::uint32_t rootParam, const void *data, std::size_t size) -> void;
+
+    /// @brief
+    ///   Copy data from system memory and set a constant buffer view at the specified root
+    ///   parameter.
+    ///
+    /// @param rootParam
+    ///   Index of the root parameter to set the constant buffer view.
+    /// @param data
+    ///   Start of data to be copied.
+    /// @param size
+    ///   Size in byte of data to be used as constant buffer.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to allocate temporary upload buffer.
+    InkExport auto
+    setComputeConstantBuffer(std::uint32_t rootParam, const void *data, std::size_t size) -> void;
+
+    /// @brief
+    ///   Copy data from system memory and set a constant buffer view for the specified root
+    ///   descriptor table.
+    ///
+    /// @param rootParam
+    ///   Index of the root descriptor table to set the constant buffer view.
+    /// @param offset
+    ///   Offset from start of the root descriptor table to set the constant buffer view.
+    /// @param data
+    ///   Start of data to be copied.
+    /// @param size
+    ///   Size in byte of data to be used as constant buffer.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to allocate temporary upload buffer.
+    InkExport auto setGraphicsConstantBuffer(std::uint32_t rootParam,
+                                             std::uint32_t offset,
+                                             const void   *data,
+                                             std::size_t   size) -> void;
+
+    /// @brief
+    ///   Copy data from system memory and set a constant buffer view for the specified root
+    ///   descriptor table.
+    ///
+    /// @param rootParam
+    ///   Index of the root descriptor table to set the constant buffer view.
+    /// @param offset
+    ///   Offset from start of the root descriptor table to set the constant buffer view.
+    /// @param data
+    ///   Start of data to be copied.
+    /// @param size
+    ///   Size in byte of data to be used as constant buffer.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to allocate temporary upload buffer.
+    InkExport auto setComputeConstantBuffer(std::uint32_t rootParam,
+                                            std::uint32_t offset,
+                                            const void   *data,
+                                            std::size_t   size) -> void;
 
     /// @brief
     ///   Set viewport for current graphics pipeline.
@@ -573,6 +758,56 @@ public:
 
         m_cmdList->RSSetScissorRects(1, &rect);
     }
+
+    /// @brief
+    ///   Set color blend factors for current graphics pipeline.
+    ///
+    /// @param factor
+    ///   Blend factors for each color options.
+    auto setBlendFactor(Color factor) noexcept -> void {
+        const float arr[] = {factor.red, factor.green, factor.blue, factor.alpha};
+        m_cmdList->OMSetBlendFactor(arr);
+    }
+
+    /// @brief
+    ///   Draw primitives.
+    ///
+    /// @param vertexCount
+    ///   Number of vertices to be drawn.
+    /// @param firstVertex
+    ///   Index of the first vertex to be drawn.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to submit dynamic descriptor heaps.
+    InkExport auto draw(std::uint32_t vertexCount, std::uint32_t firstVertex = 0) -> void;
+
+    /// @brief
+    ///   Draw primitives according to index buffer.
+    ///
+    /// @param indexCount
+    ///   Number of indices to be used.
+    /// @param firstIndex
+    ///   Index of the first index to be used in index buffer.
+    /// @param firstVertex
+    ///   Index of the first vertex in vertex buffer to be drawn.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to submit dynamic descriptor heaps.
+    InkExport auto drawIndexed(std::uint32_t indexCount,
+                               std::uint32_t firstIndex,
+                               std::uint32_t firstVertex = 0) -> void;
+
+    /// @brief
+    ///   Dispatch tasks to compute pipeline.
+    ///
+    /// @param groupX
+    ///   Number of thread groups for x dimension.
+    /// @param groupY
+    ///   Number of thread groups for y dimension.
+    /// @param groupZ
+    ///   Number of thread groups for z dimension.
+    InkExport auto dispatch(std::size_t groupX, std::size_t groupY, std::size_t groupZ) noexcept
+        -> void;
 
 private:
     /// @brief

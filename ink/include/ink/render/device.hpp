@@ -266,6 +266,12 @@ public:
     /// @param sampleCount
     ///   Sample count of the depth buffer. This value will be set to 1 if 0 is passed. Enabling
     ///   multi-sample will disable unordered access for the depth buffer.
+    ///
+    /// @return
+    ///   The new depth buffer.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to create the depth buffer.
     [[nodiscard]] InkExport auto newDepthBuffer(std::uint32_t width,
                                                 std::uint32_t height,
                                                 DXGI_FORMAT   format,
@@ -284,6 +290,9 @@ public:
     /// @param tearing
     ///   Specifies whether to enable variable refresh rate for this swap chain. Tearing will not be
     ///   enabled if not supported and no exception will be thrown.
+    ///
+    /// @return
+    ///   The new swap chain.
     ///
     /// @throw RenderAPIException
     ///   Thrown if failed to create the swap chain and get back buffers.
@@ -306,6 +315,9 @@ public:
     ///   Specifies whether to enable variable refresh rate for this swap chain. Tearing will not be
     ///   enabled if not supported and no exception will be thrown.
     ///
+    /// @return
+    ///   The new swap chain.
+    ///
     /// @throw RenderAPIException
     ///   Thrown if failed to create the swap chain and get back buffers.
     [[nodiscard]] InkExport auto newSwapChain(HWND          window,
@@ -316,9 +328,121 @@ public:
     /// @brief
     ///   Create a new command buffer.
     ///
+    /// @return
+    ///   The new command buffer.
+    ///
     /// @throw RenderAPIException
     ///   Thrown if failed to create the new command buffer.
     [[nodiscard]] InkExport auto newCommandBuffer() -> CommandBuffer;
+
+    /// @brief
+    ///   Create a new root signature without static sampler.
+    ///
+    /// @param paramCount
+    ///   Number of root parameters in the root signature.
+    /// @param params
+    ///   Array of root parameters.
+    ///
+    /// @return
+    ///   The new root signature.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to create the new root signature.
+    [[nodiscard]] InkExport auto newRootSignature(std::size_t                paramCount,
+                                                  const D3D12_ROOT_PARAMETER params[])
+        -> RootSignature;
+
+    /// @brief
+    ///   Create a new root signature.
+    ///
+    /// @param desc
+    ///   Root signature description that describes how to create this root signature.
+    ///
+    /// @return
+    ///   The new root signature.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to create the new root signature.
+    [[nodiscard]] InkExport auto newRootSignature(const D3D12_ROOT_SIGNATURE_DESC &desc)
+        -> RootSignature;
+
+    /// @brief
+    ///   Create a new graphics pipeline state with blending disabled.
+    ///
+    /// @param rootSignature
+    ///   Root signature that this pipeline state will use.
+    /// @param vertexShader
+    ///   Vertex shader bytecode.
+    /// @param pixelShader
+    ///   Pixel shader bytecode.
+    /// @param geometryShader
+    ///   Geometry shader bytecode.
+    /// @param numInputElements
+    ///   Number of input elements in the input layout.
+    /// @param inputElements
+    ///   Array of input elements in the input layout.
+    /// @param numRenderTargets
+    ///   Number of render targets in the render target formats array.
+    /// @param renderTargetFormats
+    ///   Array of render target formats.
+    /// @param depthStencilFormat
+    ///   Depth stencil format.
+    /// @param fillMode
+    ///   Fill mode of the rasterizer.
+    /// @param cullMode
+    ///   Cull mode of the rasterizer.
+    /// @param sampleCount
+    ///   Sample count of the render targets. This value will be set to 1 if 0 is passed.
+    ///
+    /// @return
+    ///   The new graphics pipeline state.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to create the new graphics pipeline state.
+    [[nodiscard]] InkExport auto
+    newGraphicsPipeline(RootSignature                 &rootSignature,
+                        D3D12_SHADER_BYTECODE          vertexShader,
+                        D3D12_SHADER_BYTECODE          pixelShader,
+                        D3D12_SHADER_BYTECODE          geometryShader,
+                        std::size_t                    numInputElements,
+                        const D3D12_INPUT_ELEMENT_DESC inputElements[],
+                        std::size_t                    numRenderTargets,
+                        const DXGI_FORMAT              renderTargetFormats[],
+                        DXGI_FORMAT                    depthStencilFormat,
+                        D3D12_FILL_MODE                fillMode    = D3D12_FILL_MODE_SOLID,
+                        D3D12_CULL_MODE                cullMode    = D3D12_CULL_MODE_BACK,
+                        std::uint32_t                  sampleCount = 1) -> GraphicsPipelineState;
+
+    /// @brief
+    ///   Create a new graphics pipeline state.
+    ///
+    /// @param desc
+    ///   Graphics pipeline state description that describes how to create this pipeline state.
+    ///
+    /// @return
+    ///   The new graphics pipeline state.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to create the new graphics pipeline state.
+    [[nodiscard]] InkExport auto newGraphicsPipeline(const D3D12_GRAPHICS_PIPELINE_STATE_DESC &desc)
+        -> GraphicsPipelineState;
+
+    /// @brief
+    ///   Create a new compute pipeline state.
+    ///
+    /// @param rootSignature
+    ///   Root signature that this pipeline state will use.
+    /// @param computeShader
+    ///   Compute shader bytecode.
+    ///
+    /// @return
+    ///   The new compute pipeline state.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to create the new compute pipeline state.
+    [[nodiscard]] InkExport auto newComputePipeline(RootSignature        &rootSignature,
+                                                    D3D12_SHADER_BYTECODE computeShader)
+        -> ComputePipelineState;
 
     friend class CommandBuffer;
     friend class ConstantBufferView;
