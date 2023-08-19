@@ -1,5 +1,6 @@
-#include "ink/core/window.h"
-#include "ink/core/assert.h"
+#include "ink/core/window.hpp"
+#include "ink/core/exception.hpp"
+#include "ink/render/device.hpp"
 
 #include <shellapi.h>
 #include <windowsx.h>
@@ -7,60 +8,6 @@
 using namespace ink;
 
 namespace {
-
-class WindowClass {
-private:
-    /// @brief
-    ///   Register ink default window class.
-    WindowClass() noexcept : m_hInstance(GetModuleHandleW(nullptr)), m_classID() {
-        const WNDCLASSEXW clsEx{
-            /* cbSize        = */ sizeof(WNDCLASSEX),
-            /* style         = */ CS_HREDRAW | CS_VREDRAW,
-            /* lpfnWndProc   = */ ink::Window::windowProc,
-            /* cbClsExtra    = */ 0,
-            /* cbWndExtra    = */ sizeof(void *),
-            /* hInstance     = */ m_hInstance,
-            /* hIcon         = */ nullptr,
-            /* hCursor       = */ LoadCursor(nullptr, IDC_ARROW),
-            /* hbrBackground = */ reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1),
-            /* lpszMenuName  = */ nullptr,
-            /* lpszClassName = */ L"ink",
-            /* hIconSm       = */ nullptr,
-        };
-
-        m_classID = RegisterClassExW(&clsEx);
-        inkAssert(m_classID != 0, u"Failed to register win32 window class: {}.", GetLastError());
-    }
-
-    /// @brief
-    ///   Unregister ink default window class.
-    ~WindowClass() noexcept {
-        UnregisterClassW(reinterpret_cast<LPCWSTR>(m_classID), m_hInstance);
-    }
-
-public:
-    /// @brief
-    ///   Get default ink win32 window class.
-    ///
-    /// @return
-    ///   Default ink win32 window class.
-    [[nodiscard]]
-    static auto get() noexcept -> LPCWSTR;
-
-private:
-    /// @brief
-    ///   The HINSTANCE that is used to register this class.
-    HINSTANCE m_hInstance;
-
-    /// @brief
-    ///   ID of this window class.
-    ATOM m_classID;
-};
-
-auto WindowClass::get() noexcept -> LPCWSTR {
-    static WindowClass instance;
-    return reinterpret_cast<LPCWSTR>(instance.m_classID);
-}
 
 /// @brief
 ///   Convert ink window style to win32 window style flags.
@@ -91,117 +38,47 @@ auto toWin32Style(WindowStyle flags, DWORD &dwStyle, DWORD &dwStyleEx) noexcept 
         dwStyleEx |= WS_EX_TOPMOST;
 }
 
-} // namespace
+/// @brief
+///   Convert a UTF-8 string to a wide string.
+///
+/// @param str
+///   The UTF-8 string to be converted.
+[[nodiscard]] auto toWideString(std::string_view str) noexcept -> std::wstring {
+    const int count =
+        MultiByteToWideChar(CP_UTF8, 0, str.data(), static_cast<int>(str.size()), nullptr, 0);
+    if (count <= 0)
+        return {};
 
-#if !defined(__clang__) && defined(_MSC_VER)
-#    pragma warning(push)
-#    pragma warning(disable : 6387)
-#endif
-
-ink::Window::Window(StringView    title,
-                    std::uint32_t width,
-                    std::uint32_t height,
-                    WindowStyle   style) noexcept
-    : m_hInstance(GetModuleHandleW(nullptr)),
-      m_hWnd(nullptr),
-      m_title(title),
-      m_width(width),
-      m_height(height),
-      m_highSurrogate(),
-      m_focusCallback(),
-      m_closeCallback(),
-      m_charCallback(),
-      m_keyCallback(),
-      m_mousePosCallback(),
-      m_mouseWheelCallback(),
-      m_resizeCallback(),
-      m_minimizeCallback(),
-      m_maximizeCallback(),
-      m_windowPosCallback(),
-      m_fileDropCallback() {
-    // Setup DPI awareness. It is safe to call for multi-times.
-    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-
-    // Window class.
-    LPCWSTR cls = WindowClass::get();
-
-    DWORD dwStyle, dwStyleEx;
-    toWin32Style(style, dwStyle, dwStyleEx);
-
-    RECT rect{0, 0, static_cast<LONG>(width), static_cast<LONG>(height)};
-    AdjustWindowRectEx(&rect, dwStyle, FALSE, dwStyleEx);
-
-    // Create window.
-    m_hWnd = CreateWindowExW(dwStyleEx, cls, reinterpret_cast<LPCWSTR>(m_title.data()), dwStyle,
-                             CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left,
-                             rect.bottom - rect.top, nullptr, nullptr, m_hInstance, this);
-    inkAssert(m_hWnd != nullptr, u"Failed to create window {}: {}.", m_title, GetLastError());
-
-    // Show window.
-    if ((style & WindowStyle::Visible) != WindowStyle::None)
-        ShowWindow(m_hWnd, SW_SHOW);
+    std::wstring result;
+    result.resize(static_cast<std::size_t>(count));
+    MultiByteToWideChar(CP_UTF8, 0, str.data(), static_cast<int>(str.size()), result.data(), count);
+    return result;
 }
 
-#if !defined(__clang__) && defined(_MSC_VER)
-#    pragma warning(pop)
-#endif
+/// @brief
+///   Convert a wide string to UTF-8 string.
+///
+/// @param str
+///   The wide string to be converted.
+[[nodiscard]] auto toUTF8String(std::wstring_view str) noexcept -> std::string {
+    const int count = WideCharToMultiByte(CP_UTF8, 0, str.data(), static_cast<int>(str.size()),
+                                          nullptr, 0, nullptr, nullptr);
+    if (count <= 0)
+        return {};
 
-ink::Window::~Window() noexcept {
-    if (m_hWnd != nullptr)
-        DestroyWindow(m_hWnd);
+    std::string result;
+    result.resize(static_cast<std::size_t>(count));
+    WideCharToMultiByte(CP_UTF8, 0, str.data(), static_cast<int>(str.size()), result.data(), count,
+                        nullptr, nullptr);
+    return result;
 }
-
-auto ink::Window::resize(std::uint32_t width, std::uint32_t height) noexcept -> void {
-    if (m_hWnd == nullptr)
-        return;
-
-    RECT rect{0, 0, static_cast<LONG>(width), static_cast<LONG>(height)};
-    AdjustWindowRectEx(&rect, GetWindowLongW(m_hWnd, GWL_STYLE), FALSE,
-                       GetWindowLongW(m_hWnd, GWL_EXSTYLE));
-
-    SetWindowPos(m_hWnd, nullptr, 0, 0, rect.right - rect.left, rect.bottom - rect.top,
-                 SWP_ASYNCWINDOWPOS | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-
-    m_width  = width;
-    m_height = height;
-}
-
-auto ink::Window::center() noexcept -> void {
-    if (m_hWnd == nullptr)
-        return;
-
-    RECT rect;
-    GetWindowRect(m_hWnd, &rect);
-
-    HMONITOR    monitor = MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST);
-    MONITORINFO monitorInfo{};
-    monitorInfo.cbSize = sizeof(monitorInfo);
-    GetMonitorInfoW(monitor, &monitorInfo);
-
-    RECT screenRect = monitorInfo.rcWork;
-
-    LONG halfScreenWidth  = (screenRect.right - screenRect.left) / 2;
-    LONG halfScreenHeight = (screenRect.bottom - screenRect.top) / 2;
-
-    LONG halfWindowWidth  = (rect.right - rect.left) / 2;
-    LONG halfWindowHeight = (rect.bottom - rect.top) / 2;
-
-    LONG x = halfScreenWidth - halfWindowWidth;
-    LONG y = halfScreenHeight - halfWindowHeight;
-
-    SetWindowPos(m_hWnd, nullptr, x, y, -1, -1,
-                 SWP_ASYNCWINDOWPOS | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-}
-
-namespace {
 
 /// @brief
 ///   Get modifier keys status.
 ///
 /// @return
 ///   Modifier keys status.
-[[nodiscard]]
-auto modifiers() noexcept -> Modifier {
+[[nodiscard]] auto modifiers() noexcept -> Modifier {
     Modifier mods = Modifier::None;
 
     if (GetKeyState(VK_SHIFT) & 0x8000)
@@ -218,7 +95,7 @@ auto modifiers() noexcept -> Modifier {
 
 /// @brief
 ///   Key code map. Used to convert win32 virtual key to ink key code.
-static constexpr const KeyCode KEY_CODE_MAP[0x100] = {
+constexpr const std::array<KeyCode, 0x100> KEY_CODE_MAP = {
     KeyCode::Undefined,   KeyCode::MouseLeft,   KeyCode::MouseRight,
     KeyCode::Break,       KeyCode::MouseMiddle, KeyCode::MouseX1,
     KeyCode::MouseX2,     KeyCode::Undefined,   KeyCode::Backspace,
@@ -309,68 +186,242 @@ static constexpr const KeyCode KEY_CODE_MAP[0x100] = {
 
 } // namespace
 
-LRESULT ink::Window::windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-    Window *window = reinterpret_cast<Window *>(GetWindowLongPtrW(hWnd, 0));
-    switch (uMsg) {
-    case WM_NCCREATE: {
-        auto cs = reinterpret_cast<CREATESTRUCTW *>(lParam);
-        SetWindowLongPtrW(hWnd, 0, reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
-        return DefWindowProcW(hWnd, uMsg, wParam, lParam);
+ink::Window::Window(std::string_view title,
+                    std::uint32_t    width,
+                    std::uint32_t    height,
+                    WindowStyle      style)
+    : m_hInstance(GetModuleHandleW(nullptr)),
+      m_class(),
+      m_hWnd(),
+      m_title(title),
+      m_windowWidth(),
+      m_windowHeight(),
+      m_frameWidth(width),
+      m_frameHeight(height),
+      m_isMinimized(false),
+      m_highSurrogate(),
+      m_focusCallback(),
+      m_charCallback(),
+      m_keyCallback(),
+      m_mousePosCallback(),
+      m_mouseWheelCallback(),
+      m_resizeCallback(),
+      m_minimizeCallback(),
+      m_restoreCallback(),
+      m_maximizeCallback(),
+      m_windowPosCallback(),
+      m_fileDropCallback() {
+    // Setup DPI awareness. It is safe to call for multi-times.
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
+    std::wstring wideTitle(toWideString(title));
+
+    { // Register window class.
+        const WNDCLASSEXW clsEx{
+            /* cbSize        = */ sizeof(WNDCLASSEX),
+            /* style         = */ CS_HREDRAW | CS_VREDRAW,
+            /* lpfnWndProc   = */ &Window::windowProc,
+            /* cbClsExtra    = */ 0,
+            /* cbWndExtra    = */ sizeof(void *),
+            /* hInstance     = */ m_hInstance,
+            /* hIcon         = */ nullptr,
+            /* hCursor       = */ LoadCursorW(nullptr, IDC_ARROW),
+            /* hbrBackground = */ reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1),
+            /* lpszMenuName  = */ nullptr,
+            /* lpszClassName = */ wideTitle.c_str(),
+            /* hIconSm       = */ nullptr,
+        };
+
+        m_class = RegisterClassExW(&clsEx);
+        if (m_class == 0)
+            throw SystemErrorException(static_cast<std::int32_t>(GetLastError()),
+                                       "Failed to register win32 class for window.");
     }
 
-    case WM_SETFOCUS:
-        if (window->m_focusCallback)
-            window->m_focusCallback(true);
-        return 0;
+    // Create window.
+    DWORD dwStyle, dwStyleEx;
+    toWin32Style(style, dwStyle, dwStyleEx);
 
-    case WM_KILLFOCUS:
-        if (window->m_focusCallback)
-            window->m_focusCallback(false);
-        return 0;
+    RECT rect{0, 0, static_cast<LONG>(width), static_cast<LONG>(height)};
+    AdjustWindowRectEx(&rect, dwStyle, FALSE, dwStyleEx);
+    m_windowWidth  = static_cast<std::uint32_t>(rect.right - rect.left);
+    m_windowHeight = static_cast<std::uint32_t>(rect.bottom - rect.top);
 
-    case WM_CLOSE:
+    m_hWnd = CreateWindowExW(dwStyleEx, reinterpret_cast<LPCWSTR>(m_class), wideTitle.c_str(),
+                             dwStyle, CW_USEDEFAULT, CW_USEDEFAULT, static_cast<int>(m_windowWidth),
+                             static_cast<int>(m_windowHeight), nullptr, nullptr, m_hInstance, this);
+    if (m_hWnd == nullptr) {
+        DWORD errc = GetLastError();
+        UnregisterClassW(reinterpret_cast<LPCWSTR>(m_class), m_hInstance);
+        throw SystemErrorException(static_cast<std::int32_t>(errc),
+                                   "Failed to create win32 window.");
+    }
+
+    ShowWindowAsync(m_hWnd, SW_SHOW);
+}
+
+ink::Window::Window(Window &&other) noexcept
+    : m_hInstance(other.m_hInstance),
+      m_class(other.m_class),
+      m_hWnd(other.m_hWnd),
+      m_title(std::move(other.m_title)),
+      m_windowWidth(other.m_windowWidth),
+      m_windowHeight(other.m_windowHeight),
+      m_frameWidth(other.m_frameWidth),
+      m_frameHeight(other.m_frameHeight),
+      m_isMinimized(other.m_isMinimized),
+      m_highSurrogate(other.m_highSurrogate),
+      m_focusCallback(std::move(other.m_focusCallback)),
+      m_closeCallback(std::move(other.m_closeCallback)),
+      m_charCallback(std::move(other.m_charCallback)),
+      m_keyCallback(std::move(other.m_keyCallback)),
+      m_mousePosCallback(std::move(other.m_mousePosCallback)),
+      m_mouseWheelCallback(std::move(other.m_mouseWheelCallback)),
+      m_resizeCallback(std::move(other.m_resizeCallback)),
+      m_minimizeCallback(std::move(other.m_minimizeCallback)),
+      m_restoreCallback(std::move(other.m_restoreCallback)),
+      m_maximizeCallback(std::move(other.m_maximizeCallback)),
+      m_windowPosCallback(std::move(other.m_windowPosCallback)),
+      m_fileDropCallback(std::move(other.m_fileDropCallback)) {
+    if (m_hWnd != nullptr && IsWindow(m_hWnd))
+        SetWindowLongPtrW(m_hWnd, 0, reinterpret_cast<LONG_PTR>(this));
+
+    other.m_hInstance = nullptr;
+    other.m_class     = 0;
+    other.m_hWnd      = nullptr;
+}
+
+ink::Window::~Window() noexcept {
+    if (m_hWnd != nullptr) {
+        DestroyWindow(m_hWnd);
+        UnregisterClassW(reinterpret_cast<LPCWSTR>(m_class), m_hInstance);
+    }
+}
+
+auto ink::Window::title(std::string_view newTitle) noexcept -> void {
+    if (m_hWnd == nullptr)
+        return;
+
+    std::wstring wideTitle(toWideString(newTitle));
+    if (SetWindowTextW(m_hWnd, wideTitle.c_str()))
+        m_title = newTitle;
+}
+
+auto ink::Window::resize(WindowSize frame) noexcept -> void {
+    if (m_hWnd == nullptr)
+        return;
+
+    RECT rect{0, 0, static_cast<LONG>(frame.width), static_cast<LONG>(frame.height)};
+    AdjustWindowRectEx(&rect, static_cast<DWORD>(GetWindowLongW(m_hWnd, GWL_STYLE)), FALSE,
+                       static_cast<DWORD>(GetWindowLongW(m_hWnd, GWL_EXSTYLE)));
+
+    SetWindowPos(m_hWnd, nullptr, 0, 0, rect.right - rect.left, rect.bottom - rect.top,
+                 SWP_ASYNCWINDOWPOS | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+
+    m_frameWidth   = frame.width;
+    m_frameHeight  = frame.height;
+    m_windowWidth  = static_cast<std::uint32_t>(rect.right - rect.left);
+    m_windowHeight = static_cast<std::uint32_t>(rect.bottom - rect.top);
+}
+
+auto ink::Window::center() noexcept -> void {
+    if (m_hWnd == nullptr)
+        return;
+
+    RECT rect;
+    GetWindowRect(m_hWnd, &rect);
+
+    HMONITOR    monitor = MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO monitorInfo{};
+    monitorInfo.cbSize = sizeof(monitorInfo);
+    GetMonitorInfoW(monitor, &monitorInfo);
+
+    RECT screenRect = monitorInfo.rcWork;
+
+    LONG halfScreenWidth  = (screenRect.right - screenRect.left) / 2;
+    LONG halfScreenHeight = (screenRect.bottom - screenRect.top) / 2;
+
+    LONG halfWindowWidth  = (rect.right - rect.left) / 2;
+    LONG halfWindowHeight = (rect.bottom - rect.top) / 2;
+
+    LONG x = halfScreenWidth - halfWindowWidth;
+    LONG y = halfScreenHeight - halfWindowHeight;
+
+    SetWindowPos(m_hWnd, nullptr, x, y, -1, -1,
+                 SWP_ASYNCWINDOWPOS | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+auto CALLBACK ink::Window::windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+    -> LRESULT {
+    auto *window = reinterpret_cast<Window *>(GetWindowLongPtrW(hWnd, 0));
+    switch (message) {
+    case WM_NCCREATE: {
+        auto *cs = reinterpret_cast<CREATESTRUCTW *>(lParam);
+        SetWindowLongPtrW(hWnd, 0, reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
+        return DefWindowProcW(hWnd, message, wParam, lParam);
+    }
+
+    case WM_SETFOCUS: {
+        if (window->m_focusCallback)
+            window->m_focusCallback(*window, true);
+        return 0;
+    }
+
+    case WM_KILLFOCUS: {
+        if (window->m_focusCallback)
+            window->m_focusCallback(*window, false);
+        return 0;
+    }
+
+    case WM_CLOSE: {
         if (window->m_closeCallback)
-            window->m_closeCallback();
+            window->m_closeCallback(*window);
+
         DestroyWindow(hWnd);
-        window->m_hWnd = nullptr;
+        UnregisterClassW(reinterpret_cast<LPCWSTR>(window->m_class), window->m_hInstance);
+
+        window->m_hWnd  = nullptr;
+        window->m_class = 0;
+
         return 0;
+    }
 
     case WM_CHAR:
         [[fallthrough]];
-    case WM_SYSCHAR:
+    case WM_SYSCHAR: {
         if (wParam >= 0xD800 && wParam <= 0xDBFF) {
-            // High surrogate.
             window->m_highSurrogate = static_cast<WCHAR>(wParam);
-        } else {
-            if (window->m_charCallback) {
-                char32_t codePoint = 0;
-                if (wParam >= 0xDC00 && wParam <= 0xDFFF) {
-                    if (window->m_highSurrogate) {
-                        codePoint += (window->m_highSurrogate - 0xD800) << 10;
-                        codePoint += static_cast<WCHAR>(wParam) - 0xDC00;
-                        codePoint += 0x10000;
-                    }
-                } else {
-                    codePoint = static_cast<WCHAR>(wParam);
-                }
+            return 0;
+        }
 
-                // Handle char callback.
-                window->m_charCallback(codePoint);
+        if (window->m_charCallback) {
+            char32_t codePoint = 0;
+            if (wParam >= 0xDC00 && wParam <= 0xDFFF) {
+                if (window->m_highSurrogate) {
+                    codePoint += (window->m_highSurrogate - 0xD800U) << 10;
+                    codePoint += static_cast<WCHAR>(wParam) - 0xDC00U;
+                    codePoint += 0x10000U;
+                }
+            } else {
+                codePoint = static_cast<WCHAR>(wParam);
             }
 
-            window->m_highSurrogate = 0;
+            // Handle char callback.
+            window->m_charCallback(*window, codePoint);
         }
 
         return 0;
+    }
 
-    case WM_UNICHAR:
+    case WM_UNICHAR: {
         if (wParam == UNICODE_NOCHAR)
             return TRUE;
 
         if (window->m_charCallback)
-            window->m_charCallback(static_cast<char32_t>(wParam));
+            window->m_charCallback(*window, static_cast<char32_t>(wParam));
 
         return 0;
+    }
 
     case WM_KEYDOWN:
         [[fallthrough]];
@@ -378,7 +429,7 @@ LRESULT ink::Window::windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
         [[fallthrough]];
     case WM_KEYUP:
         [[fallthrough]];
-    case WM_SYSKEYUP:
+    case WM_SYSKEYUP: {
         if (window->m_keyCallback) {
             const auto action = (HIWORD(lParam) & KF_UP) ? KeyAction::Release : KeyAction::Press;
             const auto mods   = modifiers();
@@ -406,45 +457,47 @@ LRESULT ink::Window::windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
                 break;
             }
 
-            window->m_keyCallback(key, action, mods);
+            window->m_keyCallback(*window, key, action, mods);
         }
+
         return 0;
+    }
 
     case WM_LBUTTONDOWN:
         if (window->m_keyCallback)
-            window->m_keyCallback(KeyCode::MouseLeft, KeyAction::Press, modifiers());
+            window->m_keyCallback(*window, KeyCode::MouseLeft, KeyAction::Press, modifiers());
         return 0;
 
     case WM_LBUTTONUP:
         if (window->m_keyCallback)
-            window->m_keyCallback(KeyCode::MouseLeft, KeyAction::Release, modifiers());
+            window->m_keyCallback(*window, KeyCode::MouseLeft, KeyAction::Release, modifiers());
         return 0;
 
     case WM_RBUTTONDOWN:
         if (window->m_keyCallback)
-            window->m_keyCallback(KeyCode::MouseRight, KeyAction::Press, modifiers());
+            window->m_keyCallback(*window, KeyCode::MouseRight, KeyAction::Press, modifiers());
         return 0;
 
     case WM_RBUTTONUP:
         if (window->m_keyCallback)
-            window->m_keyCallback(KeyCode::MouseRight, KeyAction::Release, modifiers());
+            window->m_keyCallback(*window, KeyCode::MouseRight, KeyAction::Release, modifiers());
         return 0;
 
     case WM_MBUTTONDOWN:
         if (window->m_keyCallback)
-            window->m_keyCallback(KeyCode::MouseMiddle, KeyAction::Press, modifiers());
+            window->m_keyCallback(*window, KeyCode::MouseMiddle, KeyAction::Press, modifiers());
         return 0;
 
     case WM_MBUTTONUP:
         if (window->m_keyCallback)
-            window->m_keyCallback(KeyCode::MouseMiddle, KeyAction::Release, modifiers());
+            window->m_keyCallback(*window, KeyCode::MouseMiddle, KeyAction::Release, modifiers());
         return 0;
 
     case WM_XBUTTONDOWN:
         if (window->m_keyCallback) {
             const KeyCode key =
                 (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? KeyCode::MouseX1 : KeyCode::MouseX2;
-            window->m_keyCallback(key, KeyAction::Press, modifiers());
+            window->m_keyCallback(*window, key, KeyAction::Press, modifiers());
         }
         return TRUE;
 
@@ -452,7 +505,7 @@ LRESULT ink::Window::windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
         if (window->m_keyCallback) {
             const KeyCode key =
                 (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? KeyCode::MouseX1 : KeyCode::MouseX2;
-            window->m_keyCallback(key, KeyAction::Release, modifiers());
+            window->m_keyCallback(*window, key, KeyAction::Release, modifiers());
         }
         return TRUE;
 
@@ -461,85 +514,289 @@ LRESULT ink::Window::windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             const std::int32_t x = GET_X_LPARAM(lParam);
             const std::int32_t y = GET_Y_LPARAM(lParam);
 
-            window->m_mousePosCallback(x, y);
+            window->m_mousePosCallback(*window, x, y);
         }
         return 0;
 
     case WM_MOUSEWHEEL:
         if (window->m_mouseWheelCallback) {
             const std::int32_t delta = GET_WHEEL_DELTA_WPARAM(wParam);
-            const std::int32_t x     = GET_X_LPARAM(lParam);
-            const std::int32_t y     = GET_Y_LPARAM(lParam);
-            const auto         mods  = modifiers();
-
-            window->m_mouseWheelCallback(x, y, 0, static_cast<float>(delta) / float(WHEEL_DELTA),
-                                         mods);
+            window->m_mouseWheelCallback(
+                *window, 0, static_cast<float>(delta) / static_cast<float>(WHEEL_DELTA));
         }
         return 0;
 
     case WM_MOUSEHWHEEL:
         if (window->m_mouseWheelCallback) {
             const std::int32_t delta = GET_WHEEL_DELTA_WPARAM(wParam);
-            const std::int32_t x     = GET_X_LPARAM(lParam);
-            const std::int32_t y     = GET_Y_LPARAM(lParam);
-            const auto         mods  = modifiers();
-
-            window->m_mouseWheelCallback(x, y, static_cast<float>(delta) / float(WHEEL_DELTA), 0,
-                                         mods);
+            window->m_mouseWheelCallback(
+                *window, static_cast<float>(delta) / static_cast<float>(WHEEL_DELTA), 0);
         }
         return 0;
 
-    case WM_SIZE:
-        if (wParam == SIZE_MINIMIZED && window->m_minimizeCallback)
-            window->m_minimizeCallback();
-        else if (wParam == SIZE_MAXIMIZED && window->m_maximizeCallback)
-            window->m_maximizeCallback();
-        if (window->m_resizeCallback) {
-            const std::uint32_t width  = LOWORD(lParam);
-            const std::uint32_t height = HIWORD(lParam);
+    case WM_SIZE: {
+        if (wParam == SIZE_MINIMIZED) {
+            if (window->m_minimizeCallback)
+                window->m_minimizeCallback(*window);
+            window->m_isMinimized = true;
+        } else {
+            // Restored from minimized state.
+            if (window->m_isMinimized && window->m_restoreCallback)
+                window->m_restoreCallback(*window);
+            window->m_isMinimized = false;
 
-            window->m_resizeCallback(width, height);
+            // Maximized.
+            if (wParam == SIZE_MAXIMIZED && window->m_maximizeCallback)
+                window->m_maximizeCallback(*window);
         }
+
+        const std::uint32_t width  = LOWORD(lParam);
+        const std::uint32_t height = HIWORD(lParam);
+
+        if (window->m_resizeCallback)
+            window->m_resizeCallback(*window, width, height);
+
+        window->m_frameWidth  = width;
+        window->m_frameHeight = height;
+
+        RECT rect;
+        GetWindowRect(hWnd, &rect);
+        window->m_windowWidth  = static_cast<std::uint32_t>(rect.right - rect.left);
+        window->m_windowHeight = static_cast<std::uint32_t>(rect.bottom - rect.top);
+
         return 0;
+    }
 
     case WM_MOVE:
         if (window->m_windowPosCallback) {
             const std::int32_t x = GET_X_LPARAM(lParam);
             const std::int32_t y = GET_Y_LPARAM(lParam);
 
-            window->m_windowPosCallback(x, y);
+            window->m_windowPosCallback(*window, x, y);
         }
         return 0;
 
     case WM_DROPFILES:
         if (window->m_fileDropCallback) {
-            HDROP drop = reinterpret_cast<HDROP>(wParam);
+            auto drop = reinterpret_cast<HDROP>(wParam);
 
             const std::size_t fileCount = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
 
-            std::vector<String> paths;
+            std::vector<std::string> paths;
             paths.reserve(fileCount);
 
-            // Query drop point.
-            POINT point;
-            DragQueryPoint(drop, &point);
-
             // Parse file paths.
+            std::wstring tempPath;
             for (std::uint32_t i = 0; i < fileCount; ++i) {
                 const std::uint32_t pathLength = DragQueryFileW(drop, i, nullptr, 0);
-
-                String path;
-                path.resize(pathLength);
-                DragQueryFileW(drop, i, reinterpret_cast<LPWSTR>(path.data()), pathLength);
-
-                paths.push_back(std::move(path));
+                tempPath.resize(pathLength);
+                DragQueryFileW(drop, i, tempPath.data(), pathLength);
+                paths.push_back(toUTF8String(tempPath));
             }
 
-            window->m_fileDropCallback(point.x, point.y, fileCount, paths.data());
+            window->m_fileDropCallback(*window, fileCount, paths.data());
             DragFinish(drop);
         }
         return 0;
     }
 
-    return DefWindowProcW(hWnd, uMsg, wParam, lParam);
+    return DefWindowProcW(hWnd, message, wParam, lParam);
+}
+
+ink::SwapChain::SwapChain(RenderDevice       &renderDevice,
+                          IDXGIFactory6      *dxgiFactory,
+                          ID3D12CommandQueue *cmdQueue,
+                          HWND                window,
+                          std::uint32_t       numBuffers,
+                          DXGI_FORMAT         bufferFormat,
+                          bool                enableTearing)
+    : m_renderDevice(&renderDevice),
+      m_swapChain(),
+      m_isTearingEnabled(),
+      m_bufferCount(numBuffers <= 2 ? 2 : 3),
+      m_bufferIndex(),
+      m_pixelFormat(bufferFormat),
+      m_backBuffers(),
+      m_presentFenceValues() {
+    // Query tearing support.
+    if (enableTearing) {
+        BOOL tearingSupport = FALSE;
+        if (SUCCEEDED(dxgiFactory->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING,
+                                                       &tearingSupport, sizeof(tearingSupport))))
+            m_isTearingEnabled = (tearingSupport == TRUE);
+    }
+
+    // Create swap chain.
+    RECT rect;
+    GetClientRect(window, &rect);
+
+    UINT flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+    if (m_isTearingEnabled)
+        flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+
+    const DXGI_SWAP_CHAIN_DESC1 desc{
+        /* Width      = */ static_cast<UINT>(rect.right),
+        /* Height     = */ static_cast<UINT>(rect.bottom),
+        /* Format     = */ m_pixelFormat,
+        /* Stereo     = */ FALSE,
+        /* SampleDesc = */
+        {
+            /* Count   = */ 1,
+            /* Quality = */ 0,
+        },
+        /* BufferUsage = */ DXGI_USAGE_RENDER_TARGET_OUTPUT | DXGI_USAGE_BACK_BUFFER,
+        /* BufferCount = */ m_bufferCount,
+        /* Scaling     = */ DXGI_SCALING_NONE,
+        /* SwapEffect  = */ DXGI_SWAP_EFFECT_FLIP_DISCARD,
+        /* AlphaMode   = */ DXGI_ALPHA_MODE_UNSPECIFIED,
+        /* Flags       = */ flags,
+    };
+
+    // TODO: Add fullscreen support.
+
+    HRESULT hr = dxgiFactory->CreateSwapChainForHwnd(cmdQueue, window, &desc, nullptr, nullptr,
+                                                     m_swapChain.GetAddressOf());
+    if (FAILED(hr))
+        throw RenderAPIException(hr, "Failed to create swap chain.");
+
+    // Disable Alt-Enter.
+    dxgiFactory->MakeWindowAssociation(window, DXGI_MWA_NO_ALT_ENTER);
+
+    // Get back buffers.
+    for (std::uint32_t i = 0; i < m_bufferCount; ++i) {
+        Microsoft::WRL::ComPtr<ID3D12Resource> backBuffer;
+        hr = m_swapChain->GetBuffer(i, IID_PPV_ARGS(backBuffer.GetAddressOf()));
+        if (FAILED(hr))
+            throw RenderAPIException(hr, "Failed to get the " + std::to_string(i) +
+                                             "'th back buffer from swap chain.");
+
+        m_backBuffers[i].m_renderTargetView = renderDevice.newRenderTargetView();
+        m_backBuffers[i].resetSwapChainBuffer(std::move(backBuffer));
+    }
+}
+
+ink::SwapChain::SwapChain() noexcept
+    : m_renderDevice(),
+      m_swapChain(),
+      m_isTearingEnabled(),
+      m_bufferCount(),
+      m_bufferIndex(),
+      m_pixelFormat(DXGI_FORMAT_UNKNOWN),
+      m_backBuffers(),
+      m_presentFenceValues() {}
+
+ink::SwapChain::SwapChain(SwapChain &&other) noexcept
+    : m_renderDevice(other.m_renderDevice),
+      m_swapChain(std::move(other.m_swapChain)),
+      m_isTearingEnabled(other.m_isTearingEnabled),
+      m_bufferCount(other.m_bufferCount),
+      m_bufferIndex(other.m_bufferIndex),
+      m_pixelFormat(other.m_pixelFormat),
+      m_backBuffers(std::move(other.m_backBuffers)),
+      m_presentFenceValues(other.m_presentFenceValues) {
+    other.m_renderDevice     = nullptr;
+    other.m_isTearingEnabled = false;
+    other.m_bufferCount      = 0;
+    other.m_bufferIndex      = 0;
+    other.m_pixelFormat      = DXGI_FORMAT_UNKNOWN;
+}
+
+ink::SwapChain::~SwapChain() noexcept {
+    if (m_swapChain != nullptr) {
+        std::uint64_t maxFence =
+            std::max({m_presentFenceValues[0], m_presentFenceValues[1], m_presentFenceValues[2]});
+        m_renderDevice->sync(maxFence);
+
+        // Change fullscreen state. Swap chain cannot be destroyed in fullscreen state.
+        BOOL    isFullscreen = FALSE;
+        HRESULT hr           = m_swapChain->GetFullscreenState(&isFullscreen, nullptr);
+        if (SUCCEEDED(hr) && isFullscreen)
+            m_swapChain->SetFullscreenState(FALSE, nullptr);
+    }
+}
+
+auto ink::SwapChain::operator=(SwapChain &&other) noexcept -> SwapChain & {
+    // Avoid self move.
+    if (this == &other)
+        return *this;
+
+    // Destroy this swap chain.
+    if (m_swapChain != nullptr) {
+        std::uint64_t maxFence =
+            std::max({m_presentFenceValues[0], m_presentFenceValues[1], m_presentFenceValues[2]});
+        m_renderDevice->sync(maxFence);
+
+        // Change fullscreen state. Swap chain cannot be destroyed in fullscreen state.
+        BOOL    isFullscreen = FALSE;
+        HRESULT hr           = m_swapChain->GetFullscreenState(&isFullscreen, nullptr);
+        if (SUCCEEDED(hr) && isFullscreen)
+            m_swapChain->SetFullscreenState(FALSE, nullptr);
+    }
+
+    m_renderDevice       = other.m_renderDevice;
+    m_swapChain          = std::move(other.m_swapChain);
+    m_isTearingEnabled   = other.m_isTearingEnabled;
+    m_bufferCount        = other.m_bufferCount;
+    m_bufferIndex        = other.m_bufferIndex;
+    m_pixelFormat        = other.m_pixelFormat;
+    m_backBuffers        = std::move(other.m_backBuffers);
+    m_presentFenceValues = other.m_presentFenceValues;
+
+    other.m_renderDevice     = nullptr;
+    other.m_isTearingEnabled = false;
+    other.m_bufferCount      = 0;
+    other.m_bufferIndex      = 0;
+    other.m_pixelFormat      = DXGI_FORMAT_UNKNOWN;
+
+    return *this;
+}
+
+auto ink::SwapChain::present() noexcept -> void {
+    m_swapChain->Present(0, m_isTearingEnabled ? DXGI_PRESENT_ALLOW_TEARING : 0);
+
+    // Acquire a fence value.
+    const std::uint64_t fenceValue      = m_renderDevice->signalFence();
+    m_presentFenceValues[m_bufferIndex] = fenceValue;
+
+    // Increase buffer index.
+    m_bufferIndex = (m_bufferIndex + 1) % m_bufferCount;
+}
+
+auto ink::SwapChain::resize(WindowSize frameSize) -> void {
+    { // Sync with GPU.
+        std::uint64_t maxFence =
+            std::max({m_presentFenceValues[0], m_presentFenceValues[1], m_presentFenceValues[2]});
+        m_renderDevice->sync(maxFence);
+    }
+
+    // Release back buffers.
+    for (std::uint32_t i = 0; i < m_bufferCount; ++i)
+        m_backBuffers[i].releaseSwapChainResource();
+
+    UINT flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+    if (m_isTearingEnabled)
+        flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+
+    HRESULT hr = m_swapChain->ResizeBuffers(0, frameSize.width, frameSize.height,
+                                            DXGI_FORMAT_UNKNOWN, flags);
+    if (FAILED(hr))
+        throw RenderAPIException(hr, "Failed to resize swap chain back buffers.");
+
+    // Get back buffers.
+    for (std::uint32_t i = 0; i < m_bufferCount; ++i) {
+        Microsoft::WRL::ComPtr<ID3D12Resource> backBuffer;
+        hr = m_swapChain->GetBuffer(i, IID_PPV_ARGS(backBuffer.GetAddressOf()));
+        if (FAILED(hr))
+            throw RenderAPIException(hr, "Failed to get the " + std::to_string(i) +
+                                             "'th back buffer from swap chain.");
+
+        m_backBuffers[i].resetSwapChainBuffer(std::move(backBuffer));
+    }
+
+    m_bufferIndex = 0;
+}
+
+auto ink::SwapChain::backBuffer() const noexcept -> ColorBuffer & {
+    m_renderDevice->sync(m_presentFenceValues[m_bufferIndex]);
+    return m_backBuffers[m_bufferIndex];
 }

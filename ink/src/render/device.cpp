@@ -1,74 +1,19 @@
-#include "ink/render/device.h"
-#include "ink/core/assert.h"
+#include "ink/render/device.hpp"
+#include "ink/core/exception.hpp"
+#include "ink/core/window.hpp"
+#include "ink/render/descriptor.hpp"
+#include "ink/render/resource.hpp"
 
 using namespace ink;
 using Microsoft::WRL::ComPtr;
 
-namespace {
-
-/// @brief
-///   D3D12 debug layer message callback function.
-///
-/// @param category
-///   D3D12 debug message category.
-/// @param severity
-///   Message severity level.
-/// @param ID
-///   Message ID.
-/// @param description
-///   The full message content.
-/// @param context
-///   User-defined object pointer. Not used here.
-[[maybe_unused]]
-auto CALLBACK messageCallback([[maybe_unused]] D3D12_MESSAGE_CATEGORY category,
-                              D3D12_MESSAGE_SEVERITY                  severity,
-                              [[maybe_unused]] D3D12_MESSAGE_ID       ID,
-                              LPCSTR                                  description,
-                              [[maybe_unused]] void                  *context) noexcept -> void {
-    std::string_view   message(description);
-    FormatMemoryBuffer buffer;
-
-    // We assume that descripton is always written in English.
-    for (const auto c : message)
-        buffer.push_back(static_cast<char16_t>(c));
-
-    String msg(buffer.data(), buffer.size());
-    switch (severity) {
-    case D3D12_MESSAGE_SEVERITY_MESSAGE:
-        logTrace(msg);
-        break;
-
-    case D3D12_MESSAGE_SEVERITY_INFO:
-        logInfo(msg);
-        break;
-
-    case D3D12_MESSAGE_SEVERITY_WARNING:
-        logWarning(msg);
-        break;
-
-    case D3D12_MESSAGE_SEVERITY_ERROR:
-        logError(msg);
-        break;
-
-    case D3D12_MESSAGE_SEVERITY_CORRUPTION:
-        logFatal(msg);
-        break;
-
-    default:
-        break;
-    }
-}
-
-} // namespace
-
-ink::RenderDevice::RenderDevice() noexcept
-    : m_factory(),
-      m_adapter(),
+ink::RenderDevice::RenderDevice()
+    : m_dxgiFactory(),
+      m_dxgiAdapter(),
       m_device(),
-      m_infoQueue(),
-      m_cmdQueue(),
+      m_commandQueue(),
       m_fence(),
-      m_nextFenceValue(1),
+      m_fenceValue(1),
       m_allocatorPool(),
       m_freeAllocatorQueue(),
       m_freeAllocatorQueueMutex(),
@@ -93,11 +38,16 @@ ink::RenderDevice::RenderDevice() noexcept
       m_samplerViewAllocationMutex(),
       m_renderTargetViewAllocationMutex(),
       m_depthStencilViewAllocationMutex(),
-      m_dynamicDescriptorHeaps(),
-      m_dynamicViewHeaps(),
-      m_dynamicSamplerHeaps(),
-      m_dynamicViewHeapMutex(),
-      m_dynamicSamplerHeapMutex() {
+      m_freeDynViewHeapQueue(),
+      m_freeDynSamplerHeapQueue(),
+      m_freeDynViewHeapQueueMutex(),
+      m_freeDynSamplerHeapQueueMutex(),
+      m_dynBufferPagePool(),
+      m_dynBufferPagePoolMutex(),
+      m_freeDynBufferPageQueue(),
+      m_freeDynBufferPageQueueMutex(),
+      m_deletionDynBufferPageQueue(),
+      m_deletionDynBufferPageQueueMutex() {
     [[maybe_unused]] HRESULT hr;
 
     bool debugLayerEnabled = false;
@@ -108,55 +58,29 @@ ink::RenderDevice::RenderDevice() noexcept
         if (SUCCEEDED(hr)) {
             debug->EnableDebugLayer();
             debugLayerEnabled = true;
-            logTrace(u"D3D12 debug layer enabled.");
-        } else {
-            logWarning(u"Debug build is enabled, but failed to enable D3D12 debug layer: 0x{:X}.",
-                       static_cast<std::uint32_t>(hr));
         }
     }
 #endif
 
     // Create DXGI factory.
     hr = CreateDXGIFactory2(debugLayerEnabled ? DXGI_CREATE_FACTORY_DEBUG : 0,
-                            IID_PPV_ARGS(m_factory.GetAddressOf()));
-    inkAssert(SUCCEEDED(hr), u"Failed to create DXGI factory: 0x{:X}.",
-              static_cast<std::uint32_t>(hr));
+                            IID_PPV_ARGS(m_dxgiFactory.GetAddressOf()));
+    if (FAILED(hr))
+        throw RenderAPIException(hr, "Failed to create DXGI factory.");
 
     // Enum adapters and create D3D12 device.
     for (UINT i = 0;; ++i) {
-        hr =
-            m_factory->EnumAdapterByGpuPreference(i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
-                                                  IID_PPV_ARGS(m_adapter.ReleaseAndGetAddressOf()));
-        inkAssert(SUCCEEDED(hr), u"Failed to enumerate DXGI adapters: 0x{:X}.",
-                  static_cast<std::uint32_t>(hr));
+        hr = m_dxgiFactory->EnumAdapterByGpuPreference(
+            i, DXGI_GPU_PREFERENCE_UNSPECIFIED,
+            IID_PPV_ARGS(m_dxgiAdapter.ReleaseAndGetAddressOf()));
+        if (FAILED(hr))
+            throw RenderAPIException(hr, "Failed to enumerate DXGI adapters.");
 
-        hr = D3D12CreateDevice(m_adapter.Get(), D3D_FEATURE_LEVEL_12_0,
+        hr = D3D12CreateDevice(m_dxgiAdapter.Get(), D3D_FEATURE_LEVEL_12_0,
                                IID_PPV_ARGS(m_device.GetAddressOf()));
         if (SUCCEEDED(hr))
             break;
     }
-
-#ifndef NDEBUG
-    // Enable info queue messenger if debug layer is enabled.
-    if (debugLayerEnabled) {
-        hr = m_device.As(&m_infoQueue);
-        if (FAILED(hr)) {
-            logWarning(
-                u"D3D12 debug layer is enabled, but failed to retrieve ID3D12InfoQueue1: 0x{:X}. "
-                u"ID3D12InfoQueue1 is only supported by Windows 11 and later versions.",
-                static_cast<std::uint32_t>(hr));
-        } else {
-            DWORD cookie = 0;
-
-            hr = m_infoQueue->RegisterMessageCallback(
-                messageCallback, D3D12_MESSAGE_CALLBACK_FLAG_NONE, nullptr, &cookie);
-            if (FAILED(hr))
-                logError(
-                    u"Failed to register message callback function to ID3D12InfoQueue1: 0x{:X}.",
-                    static_cast<std::uint32_t>(hr));
-        }
-    }
-#endif
 
     { // Create D3D12 command queue.
         const D3D12_COMMAND_QUEUE_DESC desc{
@@ -166,15 +90,15 @@ ink::RenderDevice::RenderDevice() noexcept
             /* NodeMask = */ 0,
         };
 
-        hr = m_device->CreateCommandQueue(&desc, IID_PPV_ARGS(m_cmdQueue.GetAddressOf()));
-        inkAssert(SUCCEEDED(hr), u"Failed to create ID3D12CommandQueue: 0x{:X}.",
-                  static_cast<std::uint32_t>(hr));
+        hr = m_device->CreateCommandQueue(&desc, IID_PPV_ARGS(m_commandQueue.GetAddressOf()));
+        if (FAILED(hr))
+            throw RenderAPIException(hr, "Failed to create D3D12 command queue.");
     }
 
     // Create fence.
     hr = m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(m_fence.GetAddressOf()));
-    inkAssert(SUCCEEDED(hr), u"Failed to create ID3D12Fence1: 0x{:X}.",
-              static_cast<std::uint32_t>(hr));
+    if (FAILED(hr))
+        throw RenderAPIException(hr, "Failed to create D3D12 fence.");
 
     // Get descriptor increment size.
     m_constantBufferViewIncrementSize =
@@ -190,16 +114,14 @@ ink::RenderDevice::RenderDevice() noexcept
 ink::RenderDevice::~RenderDevice() noexcept {
     this->sync();
 
-    { // Release all dynamic descriptor heaps.
-        auto begin = m_dynamicDescriptorHeaps.unsafe_begin();
-        auto end   = m_dynamicDescriptorHeaps.unsafe_end();
-        while (begin != end) {
-            (*begin)->Release();
-            ++begin;
-        }
+    // Release all deleted dynamic buffer pages.
+    while (!m_deletionDynBufferPageQueue.empty()) {
+        DynamicBufferPage *page = m_deletionDynBufferPageQueue.front().second;
+        delete page;
+        m_deletionDynBufferPageQueue.pop();
     }
 
-    { // Release all CPU descriptor heaps.
+    { // Release all descriptor heaps.
         auto begin = m_descriptorHeapPool.unsafe_begin();
         auto end   = m_descriptorHeapPool.unsafe_end();
         while (begin != end) {
@@ -218,66 +140,24 @@ ink::RenderDevice::~RenderDevice() noexcept {
     }
 }
 
-auto ink::RenderDevice::sync(std::uint64_t fenceValue) const noexcept -> void {
-    if (isFenceReached(fenceValue))
-        return;
+auto ink::RenderDevice::sync() const -> void {
+    const std::uint64_t value = signalFence();
 
-    struct FenceEvent {
-        HANDLE handle;
+    // TODO: Use thread local storage or something else to optimize event creation.
+    HANDLE event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (event == nullptr)
+        throw SystemErrorException(static_cast<std::int32_t>(GetLastError()),
+                                   "Failed to create win32 event for fence synchronization.");
 
-        FenceEvent() noexcept : handle(CreateEventW(nullptr, FALSE, FALSE, nullptr)) {}
-        ~FenceEvent() noexcept {
-            CloseHandle(handle);
-        }
-    };
-
-    static thread_local FenceEvent fenceEvent;
-
-    const HANDLE eventHandle = fenceEvent.handle;
-    m_fence->SetEventOnCompletion(fenceValue, eventHandle);
-    WaitForSingleObject(eventHandle, INFINITE);
-}
-
-auto ink::RenderDevice::newCommandAllocator() noexcept -> ID3D12CommandAllocator * {
-    ID3D12CommandAllocator *allocator = nullptr;
-
-    { // Try to get one from free allocator queue.
-        std::lock_guard<std::mutex> lock(m_freeAllocatorQueueMutex);
-        if (!m_freeAllocatorQueue.empty()) {
-            auto &front = m_freeAllocatorQueue.front();
-            if (isFenceReached(front.first)) {
-                allocator = front.second;
-                m_freeAllocatorQueue.pop();
-            }
-        }
-    }
-
-    if (allocator != nullptr) {
-        allocator->Reset();
-        return allocator;
-    }
-
-    // Try to create a new command allocator.
-    [[maybe_unused]] HRESULT hr;
-    hr = m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&allocator));
-    inkAssert(SUCCEEDED(hr), u"Failed to create ID3D12CommandAllocator: 0x{:X}.",
-              static_cast<std::uint32_t>(hr));
-
-    m_allocatorPool.push(allocator);
-    return allocator;
-}
-
-auto ink::RenderDevice::freeCommandAllocator(std::uint64_t           fenceValue,
-                                             ID3D12CommandAllocator *allocator) noexcept -> void {
-    std::lock_guard<std::mutex> lock(m_freeAllocatorQueueMutex);
-    m_freeAllocatorQueue.emplace(fenceValue, allocator);
+    m_fence->SetEventOnCompletion(value, event);
+    WaitForSingleObject(event, INFINITE);
+    CloseHandle(event);
 }
 
 auto ink::RenderDevice::supportRayTracing() const noexcept -> bool {
-    HRESULT                           hr;
     D3D12_FEATURE_DATA_D3D12_OPTIONS5 feature{};
-
-    hr = m_device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &feature, sizeof(feature));
+    HRESULT hr = m_device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &feature,
+                                               static_cast<UINT>(sizeof(feature)));
     if (FAILED(hr))
         return false;
 
@@ -363,11 +243,287 @@ auto ink::RenderDevice::supportUnorderedAccess(DXGI_FORMAT format) const noexcep
     }
 }
 
-auto ink::RenderDevice::newConstantBufferView() noexcept -> D3D12_CPU_DESCRIPTOR_HANDLE {
-    [[maybe_unused]] HRESULT hr;
+auto ink::RenderDevice::newConstantBufferView() -> ConstantBufferView {
+    std::size_t ptr = acquireConstantBufferViewDescriptor();
+    return {*this, D3D12_CPU_DESCRIPTOR_HANDLE{ptr}};
+}
 
-    { // Try to get one from free handle queue.
-        D3D12_CPU_DESCRIPTOR_HANDLE handle;
+auto ink::RenderDevice::newShaderResourceView() -> ConstantBufferView {
+    std::size_t ptr = acquireConstantBufferViewDescriptor();
+    return {*this, D3D12_CPU_DESCRIPTOR_HANDLE{ptr}};
+}
+
+auto ink::RenderDevice::newUnorderedAccessView() -> ConstantBufferView {
+    std::size_t ptr = acquireConstantBufferViewDescriptor();
+    return {*this, D3D12_CPU_DESCRIPTOR_HANDLE{ptr}};
+}
+
+auto ink::RenderDevice::newRenderTargetView() -> RenderTargetView {
+    std::size_t ptr = acquireRenderTargetViewDescriptor();
+    return {*this, D3D12_CPU_DESCRIPTOR_HANDLE{ptr}};
+}
+
+auto ink::RenderDevice::newDepthStencilView() -> DepthStencilView {
+    std::size_t ptr = acquireDepthStencilViewDescriptor();
+    return {*this, D3D12_CPU_DESCRIPTOR_HANDLE{ptr}};
+}
+
+auto ink::RenderDevice::newSampler(D3D12_FILTER filter, D3D12_TEXTURE_ADDRESS_MODE addressMode)
+    -> Sampler {
+    std::size_t ptr = acquireSamplerDescriptor();
+
+    const D3D12_CPU_DESCRIPTOR_HANDLE handle{ptr};
+    const D3D12_SAMPLER_DESC          desc{
+        /* Filter         = */ filter,
+        /* AddressU       = */ addressMode,
+        /* AddressV       = */ addressMode,
+        /* AddressW       = */ addressMode,
+        /* MipLODBias     = */ 0.0f,
+        /* MaxAnisotropy  = */ 16U,
+        /* ComparisonFunc = */ D3D12_COMPARISON_FUNC_LESS_EQUAL,
+        /* BorderColor    = */ {0, 0, 0, 0},
+        /* MinLOD         = */ 0.0f,
+        /* MaxLOD         = */ D3D12_FLOAT32_MAX,
+    };
+
+    m_device->CreateSampler(&desc, handle);
+    return {*this, desc, handle};
+}
+
+auto ink::RenderDevice::newSampler(const D3D12_SAMPLER_DESC &desc) -> Sampler {
+    std::size_t ptr = acquireSamplerDescriptor();
+
+    const D3D12_CPU_DESCRIPTOR_HANDLE handle{ptr};
+    m_device->CreateSampler(&desc, handle);
+
+    return {*this, desc, handle};
+}
+
+auto ink::RenderDevice::newGpuBuffer(std::size_t size) -> GpuBuffer {
+    return {*this, m_device.Get(), size};
+}
+
+auto ink::RenderDevice::newStructuredBuffer(std::uint32_t elementCount, std::uint32_t elementSize)
+    -> StructuredBuffer {
+    return {*this, m_device.Get(), elementCount, elementSize};
+}
+
+auto ink::RenderDevice::newColorBuffer(std::uint32_t width,
+                                       std::uint32_t height,
+                                       DXGI_FORMAT   format,
+                                       std::uint32_t sampleCount) -> ColorBuffer {
+    return {*this, m_device.Get(), width, height, 1, format, 1, sampleCount};
+}
+
+auto ink::RenderDevice::newColorBuffer(std::uint32_t width,
+                                       std::uint32_t height,
+                                       std::uint32_t arraySize,
+                                       DXGI_FORMAT   format,
+                                       std::uint32_t mipLevels,
+                                       std::uint32_t sampleCount) -> ColorBuffer {
+    return {*this, m_device.Get(), width, height, arraySize, format, mipLevels, sampleCount};
+}
+
+auto ink::RenderDevice::newDepthBuffer(std::uint32_t width,
+                                       std::uint32_t height,
+                                       DXGI_FORMAT   format,
+                                       std::uint32_t sampleCount) -> DepthBuffer {
+    return {*this, m_device.Get(), width, height, format, sampleCount};
+}
+
+auto ink::RenderDevice::new2DTexture(std::uint32_t width,
+                                     std::uint32_t height,
+                                     DXGI_FORMAT   format,
+                                     std::uint32_t mipLevels) -> Texture2D {
+    return {*this, m_device.Get(), width, height, 1, format, mipLevels, false};
+}
+
+auto ink::RenderDevice::new2DTextureArray(std::uint32_t width,
+                                          std::uint32_t height,
+                                          std::uint32_t arraySize,
+                                          DXGI_FORMAT   format,
+                                          std::uint32_t mipLevels) -> Texture2D {
+    return {*this, m_device.Get(), width, height, arraySize, format, mipLevels, false};
+}
+
+auto ink::RenderDevice::newCubeTexture(std::uint32_t width,
+                                       std::uint32_t height,
+                                       DXGI_FORMAT   format,
+                                       std::uint32_t mipLevels) -> Texture2D {
+    return {*this, m_device.Get(), width, height, 6, format, mipLevels, true};
+}
+
+auto ink::RenderDevice::newSwapChain(Window       &window,
+                                     std::uint32_t numBuffers,
+                                     DXGI_FORMAT   format,
+                                     bool          tearing) -> SwapChain {
+    return {*this,  m_dxgiFactory.Get(), m_commandQueue.Get(), window.m_hWnd, numBuffers, format,
+            tearing};
+}
+
+auto ink::RenderDevice::newSwapChain(HWND          window,
+                                     std::uint32_t numBuffers,
+                                     DXGI_FORMAT   format,
+                                     bool          tearing) -> SwapChain {
+    return {*this, m_dxgiFactory.Get(), m_commandQueue.Get(), window, numBuffers, format, tearing};
+}
+
+auto ink::RenderDevice::newCommandBuffer() -> CommandBuffer { return {*this, m_device.Get()}; }
+
+auto ink::RenderDevice::newRootSignature(std::size_t                paramCount,
+                                         const D3D12_ROOT_PARAMETER params[]) -> RootSignature {
+    const D3D12_ROOT_SIGNATURE_DESC desc{
+        /* NumParameters     = */ static_cast<UINT>(paramCount),
+        /* pParameters       = */ params,
+        /* NumStaticSamplers = */ 0,
+        /* pStaticSamplers   = */ nullptr,
+        /* Flags             = */ D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+            D3D12_ROOT_SIGNATURE_FLAG_ALLOW_STREAM_OUTPUT,
+    };
+
+    return {m_device.Get(), desc};
+}
+
+auto ink::RenderDevice::newRootSignature(const D3D12_ROOT_SIGNATURE_DESC &desc) -> RootSignature {
+    return {m_device.Get(), desc};
+}
+
+auto ink::RenderDevice::newGraphicsPipeline(RootSignature                 &rootSignature,
+                                            D3D12_SHADER_BYTECODE          vertexShader,
+                                            D3D12_SHADER_BYTECODE          pixelShader,
+                                            D3D12_SHADER_BYTECODE          geometryShader,
+                                            std::size_t                    numInputElements,
+                                            const D3D12_INPUT_ELEMENT_DESC inputElements[],
+                                            std::size_t                    numRenderTargets,
+                                            const DXGI_FORMAT              renderTargetFormats[],
+                                            DXGI_FORMAT                    depthStencilFormat,
+                                            D3D12_FILL_MODE                fillMode,
+                                            D3D12_CULL_MODE cullMode) -> GraphicsPipelineState {
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
+
+    desc.pRootSignature                        = rootSignature.rootSignature();
+    desc.VS                                    = vertexShader;
+    desc.PS                                    = pixelShader;
+    desc.GS                                    = geometryShader;
+    desc.InputLayout.pInputElementDescs        = inputElements;
+    desc.InputLayout.NumElements               = static_cast<UINT>(numInputElements);
+    desc.RasterizerState.FillMode              = fillMode;
+    desc.RasterizerState.CullMode              = cullMode;
+    desc.RasterizerState.FrontCounterClockwise = FALSE;
+    desc.RasterizerState.DepthBias             = D3D12_DEFAULT_DEPTH_BIAS;
+    desc.RasterizerState.DepthBiasClamp        = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
+    desc.RasterizerState.SlopeScaledDepthBias  = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
+    desc.RasterizerState.DepthClipEnable       = TRUE;
+    desc.RasterizerState.MultisampleEnable     = FALSE;
+    desc.RasterizerState.AntialiasedLineEnable = FALSE;
+    desc.RasterizerState.ForcedSampleCount     = 0;
+    desc.RasterizerState.ConservativeRaster    = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
+    desc.BlendState.AlphaToCoverageEnable      = FALSE;
+    desc.BlendState.IndependentBlendEnable     = FALSE;
+
+    for (auto &renderTarget : desc.BlendState.RenderTarget)
+        renderTarget = D3D12_RENDER_TARGET_BLEND_DESC{
+            /* BlendEnable           = */ FALSE,
+            /* LogicOpEnable         = */ FALSE,
+            /* SrcBlend              = */ D3D12_BLEND_ONE,
+            /* DestBlend             = */ D3D12_BLEND_ZERO,
+            /* BlendOp               = */ D3D12_BLEND_OP_ADD,
+            /* SrcBlendAlpha         = */ D3D12_BLEND_ONE,
+            /* DestBlendAlpha        = */ D3D12_BLEND_ZERO,
+            /* BlendOpAlpha          = */ D3D12_BLEND_OP_ADD,
+            /* LogicOp               = */ D3D12_LOGIC_OP_NOOP,
+            /* RenderTargetWriteMask = */ D3D12_COLOR_WRITE_ENABLE_ALL,
+        };
+
+    desc.DepthStencilState.DepthEnable      = TRUE;
+    desc.DepthStencilState.DepthWriteMask   = D3D12_DEPTH_WRITE_MASK_ALL;
+    desc.DepthStencilState.DepthFunc        = D3D12_COMPARISON_FUNC_LESS;
+    desc.DepthStencilState.StencilEnable    = FALSE;
+    desc.DepthStencilState.StencilReadMask  = D3D12_DEFAULT_STENCIL_READ_MASK;
+    desc.DepthStencilState.StencilWriteMask = D3D12_DEFAULT_STENCIL_WRITE_MASK;
+    desc.SampleMask                         = UINT_MAX;
+    desc.PrimitiveTopologyType              = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    desc.NumRenderTargets                   = static_cast<UINT>(numRenderTargets);
+    std::memcpy(desc.RTVFormats, renderTargetFormats, sizeof(DXGI_FORMAT) * numRenderTargets);
+    desc.DSVFormat        = depthStencilFormat;
+    desc.SampleDesc.Count = 1;
+
+    return {m_device.Get(), desc};
+}
+
+auto ink::RenderDevice::newGraphicsPipeline(const D3D12_GRAPHICS_PIPELINE_STATE_DESC &desc)
+    -> GraphicsPipelineState {
+    return {m_device.Get(), desc};
+}
+
+auto ink::RenderDevice::newComputePipeline(RootSignature        &rootSignature,
+                                           D3D12_SHADER_BYTECODE computeShader)
+    -> ComputePipelineState {
+    const D3D12_COMPUTE_PIPELINE_STATE_DESC desc{
+        /* pRootSignature = */ rootSignature.rootSignature(),
+        /* CS             = */ computeShader,
+        /* NodeMask       = */ 0,
+        /* CachedPSO      = */ {},
+        /* Flags          = */ D3D12_PIPELINE_STATE_FLAG_NONE,
+    };
+
+    return {m_device.Get(), desc};
+}
+
+auto ink::RenderDevice::sync(std::uint64_t fenceValue) const -> void {
+    if (fenceValue <= m_fence->GetCompletedValue())
+        return; // Already completed.
+
+    // TODO: Use thread local storage or something else to optimize event creation.
+    HANDLE event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (event == nullptr)
+        throw SystemErrorException(static_cast<std::int32_t>(GetLastError()),
+                                   "Failed to create win32 event for fence synchronization.");
+
+    m_fence->SetEventOnCompletion(fenceValue, event);
+    WaitForSingleObject(event, INFINITE);
+    CloseHandle(event);
+}
+
+auto ink::RenderDevice::acquireCommandAllocator() -> ID3D12CommandAllocator * {
+    ID3D12CommandAllocator *allocator = nullptr;
+
+    { // Try to get one from free allocator queue.
+        std::lock_guard<std::mutex> lock(m_freeAllocatorQueueMutex);
+        if (!m_freeAllocatorQueue.empty()) {
+            auto &front = m_freeAllocatorQueue.front();
+            if (front.first <= m_fence->GetCompletedValue()) {
+                allocator = front.second;
+                m_freeAllocatorQueue.pop();
+            }
+        }
+    }
+
+    if (allocator != nullptr) {
+        allocator->Reset();
+        return allocator;
+    }
+
+    // No available free allocator, create a new one.
+    HRESULT hr =
+        m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&allocator));
+    if (FAILED(hr))
+        throw RenderAPIException(hr, "Failed to create direct command list.");
+
+    m_allocatorPool.push(allocator);
+    return allocator;
+}
+
+auto ink::RenderDevice::releaseCommandAllocator(std::uint64_t           fenceValue,
+                                                ID3D12CommandAllocator *allocator) noexcept
+    -> void {
+    std::lock_guard<std::mutex> lock(m_freeAllocatorQueueMutex);
+    m_freeAllocatorQueue.emplace(fenceValue, allocator);
+}
+
+auto ink::RenderDevice::acquireConstantBufferViewDescriptor() -> std::size_t {
+    { // Try to get one from free descriptor queue.
+        std::size_t handle;
         if (m_freeConstantBufferViewQueue.try_pop(handle))
             return handle;
     }
@@ -385,34 +541,32 @@ auto ink::RenderDevice::newConstantBufferView() noexcept -> D3D12_CPU_DESCRIPTOR
             /* NodeMask       = */ 0,
         };
 
-        hr = m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&newHeap));
-        inkAssert(SUCCEEDED(hr), u"Failed to create new constant buffer view: 0x{:X}.",
-                  static_cast<std::uint32_t>(hr));
+        HRESULT hr = m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&newHeap));
+        if (FAILED(hr))
+            throw RenderAPIException(hr,
+                                     "Failed to create new constant buffer view descriptor heap.");
 
-        m_currentConstantBufferView   = newHeap->GetCPUDescriptorHandleForHeapStart();
+        m_currentConstantBufferView   = newHeap->GetCPUDescriptorHandleForHeapStart().ptr;
         m_freeConstantBufferViewCount = desc.NumDescriptors;
 
         m_descriptorHeapPool.push(newHeap);
     }
 
-    D3D12_CPU_DESCRIPTOR_HANDLE result = m_currentConstantBufferView;
+    std::size_t result = m_currentConstantBufferView;
 
-    m_currentConstantBufferView.ptr += m_constantBufferViewIncrementSize;
+    m_currentConstantBufferView += m_constantBufferViewIncrementSize;
     m_freeConstantBufferViewCount -= 1;
 
     return result;
 }
 
-auto ink::RenderDevice::freeConstantBufferView(D3D12_CPU_DESCRIPTOR_HANDLE handle) noexcept
-    -> void {
-    m_freeConstantBufferViewQueue.push(handle);
+auto ink::RenderDevice::releaseConstantBufferViewDescriptor(std::size_t ptr) noexcept -> void {
+    m_freeConstantBufferViewQueue.push(ptr);
 }
 
-auto ink::RenderDevice::newSamplerView() noexcept -> D3D12_CPU_DESCRIPTOR_HANDLE {
-    [[maybe_unused]] HRESULT hr;
-
-    { // Try to get one from free handle queue.
-        D3D12_CPU_DESCRIPTOR_HANDLE handle;
+auto ink::RenderDevice::acquireSamplerDescriptor() -> std::size_t {
+    { // Try to get one from free descriptor queue.
+        std::size_t handle;
         if (m_freeSamplerViewQueue.try_pop(handle))
             return handle;
     }
@@ -430,40 +584,38 @@ auto ink::RenderDevice::newSamplerView() noexcept -> D3D12_CPU_DESCRIPTOR_HANDLE
             /* NodeMask       = */ 0,
         };
 
-        hr = m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&newHeap));
-        inkAssert(SUCCEEDED(hr), u"Failed to create sampler CPU descriptor heap: 0x{:X}.",
-                  static_cast<std::uint32_t>(hr));
+        HRESULT hr = m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&newHeap));
+        if (FAILED(hr))
+            throw RenderAPIException(hr, "Failed to create new sampler descriptor heap.");
 
-        m_currentSamplerView   = newHeap->GetCPUDescriptorHandleForHeapStart();
+        m_currentSamplerView   = newHeap->GetCPUDescriptorHandleForHeapStart().ptr;
         m_freeSamplerViewCount = desc.NumDescriptors;
 
         m_descriptorHeapPool.push(newHeap);
     }
 
-    D3D12_CPU_DESCRIPTOR_HANDLE result = m_currentSamplerView;
+    std::size_t result = m_currentSamplerView;
 
-    m_currentSamplerView.ptr += m_samplerViewIncrementSize;
+    m_currentSamplerView += m_samplerViewIncrementSize;
     m_freeSamplerViewCount -= 1;
 
     return result;
 }
 
-auto ink::RenderDevice::freeSamplerView(D3D12_CPU_DESCRIPTOR_HANDLE handle) noexcept -> void {
-    m_freeSamplerViewQueue.push(handle);
+auto ink::RenderDevice::releaseSamplerDescriptor(std::size_t ptr) noexcept -> void {
+    m_freeSamplerViewQueue.push(ptr);
 }
 
-auto ink::RenderDevice::newRenderTargetView() noexcept -> D3D12_CPU_DESCRIPTOR_HANDLE {
-    [[maybe_unused]] HRESULT hr;
-
-    { // Try to get one from free handle queue.
-        D3D12_CPU_DESCRIPTOR_HANDLE handle;
+auto ink::RenderDevice::acquireRenderTargetViewDescriptor() -> std::size_t {
+    { // Try to get one from free descriptor queue.
+        std::size_t handle;
         if (m_freeRenderTargetViewQueue.try_pop(handle))
             return handle;
     }
 
     std::lock_guard<std::mutex> lock(m_renderTargetViewAllocationMutex);
 
-    // No more descriptors, create a new descriptor heap.
+    // No more free descriptors, create a new descriptor heap.
     if (m_freeRenderTargetViewCount == 0) {
         ID3D12DescriptorHeap *newHeap;
 
@@ -474,41 +626,39 @@ auto ink::RenderDevice::newRenderTargetView() noexcept -> D3D12_CPU_DESCRIPTOR_H
             /* NodeMask       = */ 0,
         };
 
-        hr = m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&newHeap));
-        inkAssert(SUCCEEDED(hr),
-                  u"Failed to create render target view CPU descriptor heap: 0x{:X}.",
-                  static_cast<std::uint32_t>(hr));
+        HRESULT hr = m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&newHeap));
+        if (FAILED(hr))
+            throw RenderAPIException(hr,
+                                     "Failed to create new render target view descriptor heap.");
 
-        m_currentRenderTargetView   = newHeap->GetCPUDescriptorHandleForHeapStart();
+        m_currentRenderTargetView   = newHeap->GetCPUDescriptorHandleForHeapStart().ptr;
         m_freeRenderTargetViewCount = desc.NumDescriptors;
 
         m_descriptorHeapPool.push(newHeap);
     }
 
-    D3D12_CPU_DESCRIPTOR_HANDLE result = m_currentRenderTargetView;
+    std::size_t result = m_currentRenderTargetView;
 
-    m_currentRenderTargetView.ptr += m_renderTargetViewIncrementSize;
+    m_currentRenderTargetView += m_renderTargetViewIncrementSize;
     m_freeRenderTargetViewCount -= 1;
 
     return result;
 }
 
-auto ink::RenderDevice::freeRenderTargetView(D3D12_CPU_DESCRIPTOR_HANDLE handle) noexcept -> void {
-    m_freeRenderTargetViewQueue.push(handle);
+auto ink::RenderDevice::releaseRenderTargetViewDescriptor(std::size_t ptr) noexcept -> void {
+    m_freeRenderTargetViewQueue.push(ptr);
 }
 
-auto ink::RenderDevice::newDepthStencilView() noexcept -> D3D12_CPU_DESCRIPTOR_HANDLE {
-    [[maybe_unused]] HRESULT hr;
-
-    { // Try to get one from free handle queue.
-        D3D12_CPU_DESCRIPTOR_HANDLE handle;
+auto ink::RenderDevice::acquireDepthStencilViewDescriptor() -> std::size_t {
+    { // Try to get one from free descriptor queue.
+        std::size_t handle;
         if (m_freeDepthStencilViewQueue.try_pop(handle))
             return handle;
     }
 
     std::lock_guard<std::mutex> lock(m_depthStencilViewAllocationMutex);
 
-    // No more descriptors, create a new descriptor heap.
+    // No more free descriptors, create a new descriptor heap.
     if (m_freeDepthStencilViewCount == 0) {
         ID3D12DescriptorHeap *newHeap;
 
@@ -519,45 +669,44 @@ auto ink::RenderDevice::newDepthStencilView() noexcept -> D3D12_CPU_DESCRIPTOR_H
             /* NodeMask       = */ 0,
         };
 
-        hr = m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&newHeap));
-        inkAssert(SUCCEEDED(hr),
-                  u"Failed to create new depth stencil view CPU descriptor heap: 0x{:X}.",
-                  static_cast<std::uint32_t>(hr));
+        HRESULT hr = m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&newHeap));
+        if (FAILED(hr))
+            throw RenderAPIException(hr,
+                                     "Failed to create new depth stencil view descriptor heap.");
 
-        m_currentDepthStencilView   = newHeap->GetCPUDescriptorHandleForHeapStart();
+        m_currentDepthStencilView   = newHeap->GetCPUDescriptorHandleForHeapStart().ptr;
         m_freeDepthStencilViewCount = desc.NumDescriptors;
 
         m_descriptorHeapPool.push(newHeap);
     }
 
-    D3D12_CPU_DESCRIPTOR_HANDLE result = m_currentDepthStencilView;
+    std::size_t result = m_currentDepthStencilView;
 
-    m_currentDepthStencilView.ptr += m_depthStencilViewIncrementSize;
+    m_currentDepthStencilView += m_depthStencilViewIncrementSize;
     m_freeDepthStencilViewCount -= 1;
 
     return result;
 }
 
-auto ink::RenderDevice::freeDepthStencilView(D3D12_CPU_DESCRIPTOR_HANDLE handle) noexcept -> void {
-    m_freeDepthStencilViewQueue.push(handle);
+auto ink::RenderDevice::releaseDepthStencilViewDescriptor(std::size_t ptr) noexcept -> void {
+    m_freeDepthStencilViewQueue.push(ptr);
 }
 
-auto ink::RenderDevice::newDynamicViewHeap() noexcept -> ID3D12DescriptorHeap * {
-    { // Try to get one from retired queue.
-        std::lock_guard<std::mutex> lock(m_dynamicViewHeapMutex);
-        if (!m_dynamicViewHeaps.empty()) {
-            auto &front = m_dynamicViewHeaps.front();
-            if (isFenceReached(front.first)) {
+auto ink::RenderDevice::acquireDynamicViewHeap() -> ID3D12DescriptorHeap * {
+    { // Try to get one from retired dynamic CBV/SRV/UAV heap queue.
+        std::lock_guard<std::mutex> lock(m_freeDynViewHeapQueueMutex);
+        if (!m_freeDynViewHeapQueue.empty()) {
+            auto &front = m_freeDynViewHeapQueue.front();
+            if (front.first <= m_fence->GetCompletedValue()) {
                 ID3D12DescriptorHeap *heap = front.second;
-                m_dynamicViewHeaps.pop();
+                m_freeDynViewHeapQueue.pop();
                 return heap;
             }
         }
     }
 
     // Create a new shader-visible descriptor heap.
-    [[maybe_unused]] HRESULT hr;
-    ID3D12DescriptorHeap    *heap;
+    ID3D12DescriptorHeap *heap;
 
     const D3D12_DESCRIPTOR_HEAP_DESC desc{
         /* Type           = */ D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
@@ -566,42 +715,40 @@ auto ink::RenderDevice::newDynamicViewHeap() noexcept -> ID3D12DescriptorHeap * 
         /* NodeMask       = */ 0,
     };
 
-    hr = m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&heap));
-    inkAssert(SUCCEEDED(hr),
-              u"Failed to create shader-visible CBV/SRV/UAV descriptor heap: 0x{:X}.",
-              static_cast<std::uint32_t>(hr));
+    HRESULT hr = m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&heap));
+    if (FAILED(hr))
+        throw RenderAPIException(hr, "Failed to create new dynamic view descriptor heap.");
 
-    m_dynamicDescriptorHeaps.push(heap);
+    m_descriptorHeapPool.push(heap);
     return heap;
 }
 
-auto ink::RenderDevice::freeDynamicViewHeaps(std::uint64_t          fenceValue,
-                                             std::size_t            count,
-                                             ID3D12DescriptorHeap **heaps) noexcept -> void {
+auto ink::RenderDevice::releaseDynamicViewHeaps(std::uint64_t          fenceValue,
+                                                std::size_t            count,
+                                                ID3D12DescriptorHeap **heaps) noexcept -> void {
     ID3D12DescriptorHeap      **heapEnd = heaps + count;
-    std::lock_guard<std::mutex> lock(m_dynamicViewHeapMutex);
+    std::lock_guard<std::mutex> lock(m_freeDynViewHeapQueueMutex);
     while (heaps != heapEnd) {
-        m_dynamicViewHeaps.emplace(fenceValue, *heaps);
+        m_freeDynViewHeapQueue.emplace(fenceValue, *heaps);
         ++heaps;
     }
 }
 
-auto ink::RenderDevice::newDynamicSamplerHeap() noexcept -> ID3D12DescriptorHeap * {
-    { // Try to get one from retired queue.
-        std::lock_guard<std::mutex> lock(m_dynamicSamplerHeapMutex);
-        if (!m_dynamicSamplerHeaps.empty()) {
-            auto &front = m_dynamicSamplerHeaps.front();
-            if (isFenceReached(front.first)) {
+auto ink::RenderDevice::acquireDynamicSamplerHeap() -> ID3D12DescriptorHeap * {
+    { // Try to get one from retired dynamic sampler heap queue.
+        std::lock_guard<std::mutex> lock(m_freeDynSamplerHeapQueueMutex);
+        if (!m_freeDynSamplerHeapQueue.empty()) {
+            auto &front = m_freeDynSamplerHeapQueue.front();
+            if (front.first <= m_fence->GetCompletedValue()) {
                 ID3D12DescriptorHeap *heap = front.second;
-                m_dynamicSamplerHeaps.pop();
+                m_freeDynSamplerHeapQueue.pop();
                 return heap;
             }
         }
     }
 
     // Create a new shader-visible descriptor heap.
-    [[maybe_unused]] HRESULT hr;
-    ID3D12DescriptorHeap    *heap;
+    ID3D12DescriptorHeap *heap;
 
     const D3D12_DESCRIPTOR_HEAP_DESC desc{
         /* Type           = */ D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER,
@@ -610,26 +757,89 @@ auto ink::RenderDevice::newDynamicSamplerHeap() noexcept -> ID3D12DescriptorHeap
         /* NodeMask       = */ 0,
     };
 
-    hr = m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&heap));
-    inkAssert(SUCCEEDED(hr), u"Failed to create shader-visible sampler descriptor heap: 0x{:X}.",
-              static_cast<std::uint32_t>(hr));
+    HRESULT hr = m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&heap));
+    if (FAILED(hr))
+        throw RenderAPIException(hr, "Failed to create new dynamic sampler descriptor heap.");
 
-    m_dynamicDescriptorHeaps.push(heap);
+    m_descriptorHeapPool.push(heap);
     return heap;
 }
 
-auto ink::RenderDevice::freeDynamicSamplerHeaps(std::uint64_t          fenceValue,
-                                                std::size_t            count,
-                                                ID3D12DescriptorHeap **heaps) noexcept -> void {
+auto ink::RenderDevice::releaseDynamicSamplerHeaps(std::uint64_t          fenceValue,
+                                                   std::size_t            count,
+                                                   ID3D12DescriptorHeap **heaps) noexcept -> void {
     ID3D12DescriptorHeap      **heapEnd = heaps + count;
-    std::lock_guard<std::mutex> lock(m_dynamicSamplerHeapMutex);
+    std::lock_guard<std::mutex> lock(m_freeDynSamplerHeapQueueMutex);
     while (heaps != heapEnd) {
-        m_dynamicSamplerHeaps.emplace(fenceValue, *heaps);
+        m_freeDynSamplerHeapQueue.emplace(fenceValue, *heaps);
         ++heaps;
     }
 }
 
-auto ink::RenderDevice::singleton() noexcept -> RenderDevice & {
-    static RenderDevice instance;
-    return instance;
+namespace {
+
+/// @brief
+///   Default dynamic buffer page size is 16Mib.
+constexpr const std::size_t DYNAMIC_BUFFER_PAGE_SIZE = 0x1000000;
+
+} // namespace
+
+auto ink::RenderDevice::acquireDynamicBufferPage(std::size_t size) -> DynamicBufferPage * {
+    // Align up size.
+    size = ((size + 0xFF) & ~std::size_t(0xFF));
+
+    if (size <= DYNAMIC_BUFFER_PAGE_SIZE) {
+        { // Try to get a free page from free page queue.
+            std::lock_guard<std::mutex> lock(m_freeDynBufferPageQueueMutex);
+            if (!m_freeDynBufferPageQueue.empty()) {
+                auto &front = m_freeDynBufferPageQueue.front();
+                if (front.first <= m_fence->GetCompletedValue()) {
+                    DynamicBufferPage *page = front.second;
+                    m_freeDynBufferPageQueue.pop();
+                    return page;
+                }
+            }
+        }
+
+        { // Create a new page and return it.
+            DynamicBufferPage           newPage(m_device.Get(), DYNAMIC_BUFFER_PAGE_SIZE);
+            std::lock_guard<std::mutex> lock(m_dynBufferPagePoolMutex);
+            return std::addressof(m_dynBufferPagePool.emplace(std::move(newPage)));
+        }
+    }
+
+    return new DynamicBufferPage(m_device.Get(), size);
+}
+
+auto ink::RenderDevice::releaseDynamicBufferPages(std::uint64_t       fenceValue,
+                                                  std::size_t         count,
+                                                  DynamicBufferPage **pages) noexcept -> void {
+    DynamicBufferPage **pageEnd = pages + count;
+
+    { // Free default pages.
+        std::lock_guard<std::mutex> lock(m_freeDynBufferPageQueueMutex);
+        for (auto *page = pages; page != pageEnd; ++page) {
+            if ((*page)->size() <= DYNAMIC_BUFFER_PAGE_SIZE)
+                m_freeDynBufferPageQueue.emplace(fenceValue, *page);
+        }
+    }
+
+    { // Free deletion pages.
+        const std::uint64_t         currentFence = m_fence->GetCompletedValue();
+        std::lock_guard<std::mutex> lock(m_deletionDynBufferPageQueueMutex);
+        for (auto *page = pages; page != pageEnd; ++page) {
+            if ((*page)->size() > DYNAMIC_BUFFER_PAGE_SIZE)
+                m_deletionDynBufferPageQueue.emplace(fenceValue, *page);
+        }
+
+        while (!m_deletionDynBufferPageQueue.empty()) {
+            auto &front = m_deletionDynBufferPageQueue.front();
+            if (front.first <= currentFence) {
+                delete front.second;
+                m_deletionDynBufferPageQueue.pop();
+            } else {
+                break;
+            }
+        }
+    }
 }

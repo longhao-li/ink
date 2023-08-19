@@ -1,856 +1,145 @@
-#include "ink/render/command_buffer.h"
-#include "ink/core/assert.h"
-#include "ink/render/device.h"
-
-#include <stack>
+#include "ink/render/command_buffer.hpp"
+#include "ink/core/exception.hpp"
+#include "ink/render/device.hpp"
 
 using namespace ink;
 
-ink::DynamicDescriptorHeap::DynamicDescriptorHeap() noexcept
-    : m_renderDevice(),
-      m_device(),
-      m_heapType(),
-      m_descriptorSize(),
-      m_graphicsRootSignature(),
-      m_computeRootSignature(),
-      m_currentHeap(),
-      m_currentHandle(),
-      m_freeDescriptorCount(),
-      m_retiredHeaps(),
-      m_graphicsDescriptors(),
-      m_computeDescriptors(),
-      m_graphicsTableRange(),
-      m_computeTableRange() {}
+ink::DynamicBufferPage::DynamicBufferPage(ID3D12Device *device, std::size_t size)
+    : GpuResource(), m_size(size), m_data(), m_gpuAddress() {
+    // Create ID3D12Resource.
+    const D3D12_HEAP_PROPERTIES heapProps{
+        /* Type                 = */ D3D12_HEAP_TYPE_UPLOAD,
+        /* CPUPageProperty      = */ D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+        /* MemoryPoolPreference = */ D3D12_MEMORY_POOL_UNKNOWN,
+        /* CreationNodeMask     = */ 0,
+        /* VisibleNodeMask      = */ 0,
+    };
 
-ink::DynamicDescriptorHeap::DynamicDescriptorHeap(
-    D3D12_DESCRIPTOR_HEAP_TYPE descriptorType) noexcept
-    : m_renderDevice(&RenderDevice::singleton()),
-      m_device(m_renderDevice->device()),
-      m_heapType(descriptorType),
-      m_descriptorSize(m_device->GetDescriptorHandleIncrementSize(descriptorType)),
-      m_graphicsRootSignature(),
-      m_computeRootSignature(),
-      m_currentHeap(),
-      m_currentHandle(),
-      m_freeDescriptorCount(),
-      m_retiredHeaps(),
-      m_graphicsDescriptors(),
-      m_computeDescriptors(),
-      m_graphicsTableRange(),
-      m_computeTableRange() {}
+    const D3D12_RESOURCE_DESC desc{
+        /* Dimension        = */ D3D12_RESOURCE_DIMENSION_BUFFER,
+        /* Alignment        = */ 0,
+        /* Width            = */ static_cast<UINT64>(size),
+        /* Height           = */ 1,
+        /* DepthOrArraySize = */ 1,
+        /* MipLevels        = */ 1,
+        /* Format           = */ DXGI_FORMAT_UNKNOWN,
+        /* SampleDesc       = */
+        {
+            /* Count   = */ 1,
+            /* Quality = */ 0,
+        },
+        /* Layout = */ D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+        /* Flags  = */ D3D12_RESOURCE_FLAG_NONE,
+    };
 
-ink::DynamicDescriptorHeap::DynamicDescriptorHeap(DynamicDescriptorHeap &&other) noexcept
-    : m_renderDevice(other.m_renderDevice),
-      m_device(other.m_device),
-      m_heapType(other.m_heapType),
-      m_descriptorSize(other.m_descriptorSize),
-      m_graphicsRootSignature(other.m_graphicsRootSignature),
-      m_computeRootSignature(other.m_computeRootSignature),
-      m_currentHeap(other.m_currentHeap),
-      m_currentHandle(other.m_currentHandle),
-      m_freeDescriptorCount(other.m_freeDescriptorCount),
-      m_retiredHeaps(std::move(other.m_retiredHeaps)),
-      m_graphicsDescriptors(std::move(other.m_graphicsDescriptors)),
-      m_computeDescriptors(std::move(other.m_computeDescriptors)) {
-    std::memcpy(m_graphicsTableRange, other.m_graphicsTableRange, sizeof(m_graphicsTableRange));
-    std::memcpy(m_computeTableRange, other.m_computeTableRange, sizeof(m_computeTableRange));
+    HRESULT hr = device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
+                                                 D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                                                 IID_PPV_ARGS(m_resource.GetAddressOf()));
+    if (FAILED(hr))
+        throw RenderAPIException(hr, "Failed to create ID3D12Resource for dynamic buffer page.");
 
-    other.m_graphicsRootSignature = nullptr;
-    other.m_computeRootSignature  = nullptr;
-    other.m_currentHeap           = nullptr;
-    other.m_currentHandle         = DescriptorHandle();
-    other.m_freeDescriptorCount   = 0;
-    std::memset(other.m_graphicsTableRange, 0, sizeof(other.m_graphicsTableRange));
-    std::memset(other.m_computeTableRange, 0, sizeof(other.m_computeTableRange));
+    m_usageState = D3D12_RESOURCE_STATE_GENERIC_READ;
+    m_resource->Map(0, nullptr, &m_data);
+    m_gpuAddress = m_resource->GetGPUVirtualAddress();
 }
 
-ink::DynamicDescriptorHeap::~DynamicDescriptorHeap() noexcept {
-    if (m_currentHeap != nullptr)
-        m_retiredHeaps.push_back(m_currentHeap);
-
-    if (!m_retiredHeaps.empty()) {
-        std::uint64_t fenceValue = m_renderDevice->signalFence();
-        if (m_heapType == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)
-            m_renderDevice->freeDynamicViewHeaps(fenceValue, m_retiredHeaps.size(),
-                                                 m_retiredHeaps.data());
-        else
-            m_renderDevice->freeDynamicSamplerHeaps(fenceValue, m_retiredHeaps.size(),
-                                                    m_retiredHeaps.data());
-    }
-}
-
-auto ink::DynamicDescriptorHeap::reset(std::uint64_t fenceValue) noexcept -> void {
-    if (!m_retiredHeaps.empty()) {
-
-        if (m_heapType == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)
-            m_renderDevice->freeDynamicViewHeaps(fenceValue, m_retiredHeaps.size(),
-                                                 m_retiredHeaps.data());
-        else
-            m_renderDevice->freeDynamicSamplerHeaps(fenceValue, m_retiredHeaps.size(),
-                                                    m_retiredHeaps.data());
-
-        m_retiredHeaps.clear();
-    }
-
-    // Reset root signatures.
-    m_graphicsRootSignature = nullptr;
-    m_computeRootSignature  = nullptr;
-
-    // Clear descriptions.
-    m_graphicsDescriptors.clear();
-    m_computeDescriptors.clear();
-    std::memset(m_graphicsTableRange, 0, sizeof(m_graphicsTableRange));
-    std::memset(m_computeTableRange, 0, sizeof(m_computeTableRange));
-}
-
-auto ink::DynamicDescriptorHeap::parseGraphicsRootSignature(const RootSignature &rootSig) noexcept
-    -> void {
-    m_graphicsRootSignature = &rootSig;
-
-    const auto descCount =
-        (m_heapType == D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER ? rootSig.tableSamplerCount()
-                                                          : rootSig.tableViewCount());
-    m_graphicsDescriptors.resize(descCount);
-    std::memset(m_graphicsDescriptors.data(), 0, descCount * sizeof(DescriptorCache));
-
-    std::uint32_t offset = 0;
-    if (m_heapType == D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER) {
-        for (std::uint32_t i = 0; i < std::size(m_graphicsTableRange); ++i) {
-            if (!rootSig.isSamplerTable(i))
-                continue;
-
-            std::uint32_t tableSize       = rootSig.tableSize(i);
-            m_graphicsTableRange[i].start = static_cast<std::uint16_t>(offset);
-            m_graphicsTableRange[i].count = static_cast<std::uint16_t>(tableSize);
-            offset += tableSize;
-        }
-    } else {
-        for (std::uint32_t i = 0; i < std::size(m_graphicsTableRange); ++i) {
-            if (!rootSig.isViewTable(i))
-                continue;
-
-            std::uint32_t tableSize       = rootSig.tableSize(i);
-            m_graphicsTableRange[i].start = static_cast<std::uint16_t>(offset);
-            m_graphicsTableRange[i].count = static_cast<std::uint16_t>(tableSize);
-            offset += tableSize;
-        }
-    }
-}
-
-auto ink::DynamicDescriptorHeap::parseComputeRootSignature(const RootSignature &rootSig) noexcept
-    -> void {
-    m_computeRootSignature = &rootSig;
-
-    const auto descCount =
-        (m_heapType == D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER ? rootSig.tableSamplerCount()
-                                                          : rootSig.tableViewCount());
-
-    m_computeDescriptors.resize(descCount);
-    std::memset(m_computeDescriptors.data(), 0, descCount * sizeof(DescriptorCache));
-
-    std::uint32_t offset = 0;
-    if (m_heapType == D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER) {
-        for (std::uint32_t i = 0; i < std::size(m_computeTableRange); ++i) {
-            if (!rootSig.isSamplerTable(i))
-                continue;
-
-            std::uint32_t tableSize      = rootSig.tableSize(i);
-            m_computeTableRange[i].start = static_cast<std::uint16_t>(offset);
-            m_computeTableRange[i].count = static_cast<std::uint16_t>(tableSize);
-            offset += tableSize;
-        }
-    } else {
-        for (std::uint32_t i = 0; i < std::size(m_computeTableRange); ++i) {
-            if (!rootSig.isViewTable(i))
-                continue;
-
-            std::uint32_t tableSize      = rootSig.tableSize(i);
-            m_computeTableRange[i].start = static_cast<std::uint16_t>(offset);
-            m_computeTableRange[i].count = static_cast<std::uint16_t>(tableSize);
-            offset += tableSize;
-        }
-    }
-}
-
-auto ink::DynamicDescriptorHeap::bindGraphicsDescriptor(std::uint32_t       paramIndex,
-                                                        std::uint32_t       offset,
-                                                        CpuDescriptorHandle descriptor) noexcept
-    -> void {
-    inkAssert(paramIndex < std::size(m_graphicsTableRange), u"Root parameter index out of range.");
-
-    auto &table = m_graphicsTableRange[paramIndex];
-    inkAssert(offset < table.count, u"Descriptor offset out of range.");
-
-    auto &param     = m_graphicsDescriptors[static_cast<std::size_t>(table.start) + offset];
-    param.cacheType = CacheType::CpuDescriptor;
-    param.handle    = descriptor;
-}
-
-auto ink::DynamicDescriptorHeap::bindGraphicsDescriptor(
-    std::uint32_t                          paramIndex,
-    std::uint32_t                          offset,
-    const D3D12_CONSTANT_BUFFER_VIEW_DESC &desc) noexcept -> void {
-    inkAssert(paramIndex < std::size(m_graphicsTableRange), u"Root parameter index out of range.");
-
-    auto &table = m_graphicsTableRange[paramIndex];
-    inkAssert(offset < table.count, u"Descriptor offset out of range.");
-
-    auto &param          = m_graphicsDescriptors[static_cast<std::size_t>(table.start) + offset];
-    param.cacheType      = CacheType::ConstantBufferView;
-    param.constantBuffer = desc;
-}
-
-auto ink::DynamicDescriptorHeap::bindComputeDescriptor(std::uint32_t       paramIndex,
-                                                       std::uint32_t       offset,
-                                                       CpuDescriptorHandle descriptor) noexcept
-    -> void {
-    inkAssert(paramIndex < std::size(m_computeTableRange), u"Root parameter index out of range.");
-
-    auto &table = m_computeTableRange[paramIndex];
-    inkAssert(offset < table.count, u"Descriptor offset out of range.");
-
-    auto &param     = m_computeDescriptors[static_cast<std::size_t>(table.start) + offset];
-    param.cacheType = CacheType::CpuDescriptor;
-    param.handle    = descriptor;
-}
-
-auto ink::DynamicDescriptorHeap::bindComputeDescriptor(
-    std::uint32_t                          paramIndex,
-    std::uint32_t                          offset,
-    const D3D12_CONSTANT_BUFFER_VIEW_DESC &desc) noexcept -> void {
-    inkAssert(paramIndex < std::size(m_computeTableRange), u"Root parameter index out of range.");
-
-    auto &table = m_computeTableRange[paramIndex];
-    inkAssert(offset < table.count, u"Descriptor offset out of range.");
-
-    auto &param          = m_computeDescriptors[static_cast<std::size_t>(table.start) + offset];
-    param.cacheType      = CacheType::ConstantBufferView;
-    param.constantBuffer = desc;
-}
-
-auto ink::DynamicDescriptorHeap::submitGraphicsDescriptors(
-    ID3D12GraphicsCommandList *cmdList) noexcept -> void {
-    if (m_graphicsRootSignature == nullptr)
-        return;
-
-    inkAssert(m_heapType != D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV ||
-                  m_graphicsDescriptors.size() <= 1024,
-              u"At most 1024 descriptors are support for CBV/SRV/UAV dynamic descriptor heap.");
-    inkAssert(m_heapType != D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER ||
-                  m_graphicsDescriptors.size() <= 256,
-              u"At most 256 descriptors are supported for sampler dynamic descriptor heaps.");
-
-    const auto requiredCount = static_cast<std::uint32_t>(m_graphicsDescriptors.size());
-
-    // Require new descriptor heap if there is no enough space.
-    if (requiredCount > m_freeDescriptorCount) {
-        if (m_currentHeap != nullptr)
-            m_retiredHeaps.push_back(m_currentHeap);
-
-        if (m_heapType == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)
-            m_currentHeap = m_renderDevice->newDynamicViewHeap();
-        else
-            m_currentHeap = m_renderDevice->newDynamicSamplerHeap();
-
-        m_currentHandle = DescriptorHandle(m_currentHeap->GetCPUDescriptorHandleForHeapStart(),
-                                           m_currentHeap->GetGPUDescriptorHandleForHeapStart());
-
-        auto desc             = m_currentHeap->GetDesc();
-        m_freeDescriptorCount = desc.NumDescriptors;
-    }
-
-    if (requiredCount != 0)
-        cmdList->SetDescriptorHeaps(1, &m_currentHeap);
-
-    // Copy graphics descriptors.
-    std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> copyCache;
-    std::vector<UINT>                        copyCount;
-
-    copyCache.resize(requiredCount * std::size_t(2));
-    copyCount.resize(requiredCount);
-
-    D3D12_CPU_DESCRIPTOR_HANDLE *copySrc = copyCache.data();
-    D3D12_CPU_DESCRIPTOR_HANDLE *copyDst = copyCache.data() + requiredCount;
-
-    std::size_t count = 0;
-    for (std::uint32_t i = 0; i < std::size(m_graphicsTableRange); ++i) {
-        auto &table = m_graphicsTableRange[i];
-        if (table.count == 0)
-            continue;
-
-        cmdList->SetGraphicsRootDescriptorTable(i, m_currentHandle);
-
-        auto rangeStart = m_graphicsDescriptors.data() + table.start;
-        auto rangeEnd   = rangeStart + table.count;
-        for (auto param = rangeStart; param != rangeEnd; ++param) {
-            switch (param->cacheType) {
-            case CacheType::CpuDescriptor:
-                copySrc[count]   = param->handle;
-                copyDst[count]   = m_currentHandle;
-                copyCount[count] = 1;
-                count += 1;
-                break;
-
-            case CacheType::ConstantBufferView:
-                m_device->CreateConstantBufferView(&(param->constantBuffer), m_currentHandle);
-                break;
-
-            default:
-                break;
-            }
-
-            m_currentHandle += m_descriptorSize;
-            m_freeDescriptorCount -= 1;
-        }
-    }
-
-    if (count != 0)
-        m_device->CopyDescriptors(static_cast<UINT>(count), copyDst, copyCount.data(),
-                                  static_cast<UINT>(count), copySrc, copyCount.data(), m_heapType);
-}
-
-auto ink::DynamicDescriptorHeap::submitComputeDescriptors(
-    ID3D12GraphicsCommandList *cmdList) noexcept -> void {
-    if (m_computeRootSignature == nullptr)
-        return;
-
-    inkAssert(m_heapType != D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV ||
-                  m_computeDescriptors.size() <= 1024,
-              u"At most 1024 descriptors are support for CBV/SRV/UAV dynamic descriptor heap.");
-    inkAssert(m_heapType != D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER ||
-                  m_computeDescriptors.size() <= 256,
-              u"At most 256 descriptors are supported for sampler dynamic descriptor heaps.");
-
-    const auto requiredCount = static_cast<std::uint32_t>(m_computeDescriptors.size());
-
-    // Require new descriptor heap if there is no enough space.
-    if (requiredCount > m_freeDescriptorCount) {
-        if (m_currentHeap != nullptr)
-            m_retiredHeaps.push_back(m_currentHeap);
-
-        if (m_heapType == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)
-            m_currentHeap = m_renderDevice->newDynamicViewHeap();
-        else
-            m_currentHeap = m_renderDevice->newDynamicSamplerHeap();
-
-        m_currentHandle = DescriptorHandle(m_currentHeap->GetCPUDescriptorHandleForHeapStart(),
-                                           m_currentHeap->GetGPUDescriptorHandleForHeapStart());
-
-        auto desc             = m_currentHeap->GetDesc();
-        m_freeDescriptorCount = desc.NumDescriptors;
-    }
-
-    if (requiredCount != 0)
-        cmdList->SetDescriptorHeaps(1, &m_currentHeap);
-
-    // Copy compute descriptors.
-    std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> copyCache;
-    std::vector<UINT>                        copyCount;
-
-    copyCache.resize(requiredCount * std::size_t(2));
-    copyCount.resize(requiredCount);
-
-    D3D12_CPU_DESCRIPTOR_HANDLE *copySrc = copyCache.data();
-    D3D12_CPU_DESCRIPTOR_HANDLE *copyDst = copyCache.data() + requiredCount;
-
-    std::size_t count = 0;
-    for (std::uint32_t i = 0; i < std::size(m_computeTableRange); ++i) {
-        auto &table = m_computeTableRange[i];
-        if (table.count == 0)
-            continue;
-
-        cmdList->SetComputeRootDescriptorTable(i, m_currentHandle);
-
-        auto rangeStart = m_computeDescriptors.data() + table.start;
-        auto rangeEnd   = rangeStart + table.count;
-        for (auto param = rangeStart; param != rangeEnd; ++param) {
-            switch (param->cacheType) {
-            case CacheType::CpuDescriptor:
-                copySrc[count]   = param->handle;
-                copyDst[count]   = m_currentHandle;
-                copyCount[count] = 1;
-                count += 1;
-                break;
-
-            case CacheType::ConstantBufferView:
-                m_device->CreateConstantBufferView(&(param->constantBuffer), m_currentHandle);
-                break;
-
-            default:
-                break;
-            }
-
-            m_currentHandle += m_descriptorSize;
-            m_freeDescriptorCount -= 1;
-        }
-    }
-
-    if (count != 0)
-        m_device->CopyDescriptors(static_cast<UINT>(count), copyDst, copyCount.data(),
-                                  static_cast<UINT>(count), copySrc, copyCount.data(), m_heapType);
-}
-
-namespace {
-
-inline constexpr const std::uint32_t DEFAULT_PAGE_SIZE = 0x200000; // 2 MiB
-
-enum class DynamicBufferType {
-    Upload,
-    UnorderedAccess,
-};
-
-class DynamicBufferPage final : public GpuResource {
-public:
-    /// @brief
-    ///   Create a new dynamic buffer page.
-    /// @note
-    ///   Errors are handled with assertions.
-    ///
-    /// @param bufferType
-    ///   Type of this dynamic buffer page.
-    /// @param size
-    ///   Expected size in byte of this dynamic buffer page.
-    DynamicBufferPage(DynamicBufferType bufferType, std::size_t size = DEFAULT_PAGE_SIZE) noexcept;
-
-    /// @brief
-    ///   Move constructor of dynamic buffer page.
-    ///
-    /// @param other
-    ///   The dynamic buffer page to be moved from. The moved dynamic buffer page will be
-    ///   invalidated.
-    DynamicBufferPage(DynamicBufferPage &&other) noexcept;
-
-    /// @brief
-    ///   Destroy this dynamic buffer page.
-    ~DynamicBufferPage() noexcept override;
-
-    /// @brief
-    ///   Map this dynamic buffer page to memory address.
-    /// @note
-    ///   Only available for uplload buffer page.
-    ///
-    /// @tparam T
-    ///   Type of the pointer to be mapped.
-    ///
-    /// @return
-    ///   Pointer to the mapped memory.
-    template <typename T>
-    [[nodiscard]]
-    auto map() const noexcept -> T * {
-        return static_cast<T *>(m_data);
-    }
-
-    /// @brief
-    ///   Get GPU virtual address to start of this dynamic buffer page.
-    ///
-    /// @return
-    ///   GPU virtual address to start of this dynamic buffer page.
-    [[nodiscard]]
-    auto gpuAddress() const noexcept -> std::uint64_t {
-        return m_gpuAddress;
-    }
-
-    /// @brief
-    ///   Checks if this is a default dynamic buffer page.
-    ///
-    /// @return
-    ///   A boolean value that indicates whether this is a default dynamic buffer page.
-    /// @retval true
-    ///   This is a default dynamic buffer page.
-    /// @retval false
-    ///   This is not a default dynamic buffer page.
-    [[nodiscard]]
-    auto isDefaultPage() const noexcept -> bool {
-        return m_size == DEFAULT_PAGE_SIZE;
-    }
-
-    /// @brief
-    ///   Checks if this dynamic buffer page is an upload buffer page.
-    ///
-    /// @return
-    ///   A boolean value that indicates whether this is an upload buffer page.
-    /// @retval true
-    ///   This is an upload buffer page.
-    /// @retval false
-    ///   This is not an upload buffer page.
-    [[nodiscard]]
-    auto isUploadBuffer() const noexcept -> bool {
-        return m_bufferType == DynamicBufferType::Upload;
-    }
-
-private:
-    /// @brief
-    ///   Type of this dynamic buffer page.
-    DynamicBufferType m_bufferType;
-
-    /// @brief
-    ///   Size in byte of this dynamic buffer page.
-    std::size_t m_size;
-
-    /// @brief
-    ///   CPU pointer to start of this dynamic buffer page (upload buffer only).
-    void *m_data;
-
-    /// @brief
-    ///   GPU virtual address to start of this temp buffer page.
-    std::uint64_t m_gpuAddress;
-};
-
-DynamicBufferPage::DynamicBufferPage(DynamicBufferType bufferType, std::size_t size) noexcept
-    : GpuResource(), m_bufferType(bufferType), m_size(size), m_data(), m_gpuAddress() {
-    [[maybe_unused]] HRESULT hr;
-
-    auto &dev = RenderDevice::singleton();
-    if (bufferType == DynamicBufferType::Upload) {
-        const D3D12_HEAP_PROPERTIES heapProps{
-            /* Type                 = */ D3D12_HEAP_TYPE_UPLOAD,
-            /* CPUPageProperty      = */ D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
-            /* MemoryPoolPreference = */ D3D12_MEMORY_POOL_UNKNOWN,
-            /* CreationNodeMask     = */ 0,
-            /* VisibleNodeMask      = */ 0,
-        };
-
-        const D3D12_RESOURCE_DESC desc{
-            /* Dimension        = */ D3D12_RESOURCE_DIMENSION_BUFFER,
-            /* Alignment        = */ 0,
-            /* Width            = */ size,
-            /* Height           = */ 1,
-            /* DepthOrArraySize = */ 1,
-            /* MipLevels        = */ 1,
-            /* Format           = */ DXGI_FORMAT_UNKNOWN,
-            /* SampleDesc       = */
-            {
-                /* Count   = */ 1,
-                /* Quality = */ 0,
-            },
-            /* Layout = */ D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-            /* Flags  = */ D3D12_RESOURCE_FLAG_NONE,
-        };
-
-        hr = dev.device()->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
-                                                   D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                   IID_PPV_ARGS(m_resource.GetAddressOf()));
-        inkAssert(SUCCEEDED(hr),
-                  u"Failed to create ID3D12Resource for dynamic buffer page: 0x{:X}.",
-                  static_cast<std::uint32_t>(hr));
-
-        m_usageState = D3D12_RESOURCE_STATE_GENERIC_READ;
-        m_resource->Map(0, nullptr, &m_data);
-        m_gpuAddress = m_resource->GetGPUVirtualAddress();
-    } else {
-        const D3D12_HEAP_PROPERTIES heapProps{
-            /* Type                 = */ D3D12_HEAP_TYPE_DEFAULT,
-            /* CPUPageProperty      = */ D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
-            /* MemoryPoolPreference = */ D3D12_MEMORY_POOL_UNKNOWN,
-            /* CreationNodeMask     = */ 0,
-            /* VisibleNodeMask      = */ 0,
-        };
-
-        const D3D12_RESOURCE_DESC desc{
-            /* Dimension        = */ D3D12_RESOURCE_DIMENSION_BUFFER,
-            /* Alignment        = */ 0,
-            /* Width            = */ size,
-            /* Height           = */ 1,
-            /* DepthOrArraySize = */ 1,
-            /* MipLevels        = */ 1,
-            /* Format           = */ DXGI_FORMAT_UNKNOWN,
-            /* SampleDesc       = */
-            {
-                /* Count   = */ 1,
-                /* Quality = */ 0,
-            },
-            /* Layout = */ D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-            /* Flags  = */ D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-        };
-
-        hr =
-            dev.device()->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, state(),
-                                                  nullptr, IID_PPV_ARGS(m_resource.GetAddressOf()));
-        inkAssert(
-            SUCCEEDED(hr),
-            u"Failed to create ID3D12Resource for dynamic unordered access buffer page: 0x{:X}.",
-            static_cast<std::uint32_t>(hr));
-
-        m_gpuAddress = m_resource->GetGPUVirtualAddress();
-    }
-}
-
-DynamicBufferPage::DynamicBufferPage(DynamicBufferPage &&other) noexcept
-    : GpuResource(static_cast<GpuResource &&>(other)),
-      m_bufferType(other.m_bufferType),
+ink::DynamicBufferPage::DynamicBufferPage(DynamicBufferPage &&other) noexcept
+    : GpuResource(std::move(other)),
       m_size(other.m_size),
       m_data(other.m_data),
       m_gpuAddress(other.m_gpuAddress) {
     other.m_data = nullptr;
 }
 
-DynamicBufferPage::~DynamicBufferPage() noexcept {
+ink::DynamicBufferPage::~DynamicBufferPage() noexcept {
     if (m_data != nullptr)
         m_resource->Unmap(0, nullptr);
 }
 
-class DynamicBufferPageManager {
-public:
-    /// @brief
-    ///   Create a dynamic buffer page manager.
-    DynamicBufferPageManager() noexcept;
+auto ink::DynamicBufferPage::operator=(DynamicBufferPage &&other) noexcept -> DynamicBufferPage & {
+    if (this == &other)
+        return *this;
 
-    /// @brief
-    ///   Destroy this dynamic buffer page manager and release all pages.
-    ~DynamicBufferPageManager() noexcept;
+    if (m_data != nullptr)
+        m_resource->Unmap(0, nullptr);
 
-    /// @brief
-    ///   Allocate a new dynamic upload buffer page.
-    ///
-    /// @param size
-    ///   Expected size in byte of this new dynamic buffer page. This value will be aligned up to
-    ///   256 bytes.
-    ///
-    /// @return
-    ///   Pointer to the new dynamic upload buffer page.
-    [[nodiscard]]
-    auto newUploadPage(std::size_t size) noexcept -> DynamicBufferPage *;
+    GpuResource::operator=(std::move(other));
+    m_size       = other.m_size;
+    m_data       = other.m_data;
+    m_gpuAddress = other.m_gpuAddress;
 
-    /// @brief
-    ///   Allocate a new dynamic unordered access buffer page.
-    ///
-    /// @param size
-    ///   Expected size in byte of this new dynamic buffer page. This value will be aligned up to
-    ///   256 bytes.
-    ///
-    /// @return
-    ///   Pointer to the new dynamic access buffer buffer page.
-    [[nodiscard]]
-    auto newUnorderedAccessPage(std::size_t size) noexcept -> DynamicBufferPage *;
+    other.m_data = nullptr;
 
-    /// @brief
-    ///   Free retired pages.
-    ///
-    /// @param fenceValue
-    ///   Fence value that indicates when the freed pages could be reused.
-    /// @param count
-    ///   Number of pages to be freed.
-    /// @param pages
-    ///   An array of dynamic buffer pages to be freed.
-    auto freePages(std::uint64_t fenceValue, std::size_t count, DynamicBufferPage **pages) noexcept
-        -> void;
-
-    /// @brief
-    ///   Get singleton instance of dynamic buffer page manager.
-    ///
-    /// @return
-    ///   Reference to the dynamic buffer page manager singleton.
-    [[nodiscard]]
-    static auto singleton() noexcept -> DynamicBufferPageManager &;
-
-private:
-    /// @brief
-    ///   The D3D12 device that is used to sychnorize with GPU.
-    RenderDevice &m_renderDevice;
-
-    /// @brief
-    ///   Temporary buffer page pool.
-    std::stack<DynamicBufferPage> m_pagePool;
-
-    /// @brief
-    ///   Mutex to protect page pool.
-    mutable std::mutex m_pagePoolMutex;
-
-    /// @brief
-    ///   Retired upload pages to be reused.
-    std::queue<std::pair<std::uint64_t, DynamicBufferPage *>> m_retiredUploadPages;
-
-    /// @brief
-    ///   Mutex to protect retired upload page queue.
-    mutable std::mutex m_uploadPageQueueMutex;
-
-    /// @brief
-    ///   Retired unordered access pages to be reused.
-    std::queue<std::pair<std::uint64_t, DynamicBufferPage *>> m_retiredUnorderedAccessPages;
-
-    /// @brief
-    ///   Mutex to protect retired unordered access queue.
-    mutable std::mutex m_unorderedAccessQueueMutex;
-
-    /// @brief
-    ///   Queue of pages to be deleted.
-    std::queue<std::pair<std::uint64_t, DynamicBufferPage *>> m_deletionQueue;
-
-    /// @brief
-    ///   Mutex to protect deletion queue.
-    mutable std::mutex m_deletionQueueMutex;
-};
-
-DynamicBufferPageManager::DynamicBufferPageManager() noexcept
-    : m_renderDevice(RenderDevice::singleton()),
-      m_pagePool(),
-      m_pagePoolMutex(),
-      m_retiredUploadPages(),
-      m_uploadPageQueueMutex(),
-      m_retiredUnorderedAccessPages(),
-      m_unorderedAccessQueueMutex(),
-      m_deletionQueue(),
-      m_deletionQueueMutex() {}
-
-DynamicBufferPageManager::~DynamicBufferPageManager() noexcept {
-    m_renderDevice.sync();
-    std::lock_guard<std::mutex> lock(m_deletionQueueMutex);
-    while (!m_deletionQueue.empty()) {
-        delete m_deletionQueue.front().second;
-        m_deletionQueue.pop();
-    }
+    return *this;
 }
 
-auto DynamicBufferPageManager::newUploadPage(std::size_t size) noexcept -> DynamicBufferPage * {
-    // Align up size.
-    size = (size + 0xFF) & ~std::size_t(0xFF);
+ink::DynamicBufferAllocator::DynamicBufferAllocator(RenderDevice &renderDevice) noexcept
+    : m_renderDevice(&renderDevice), m_offset(), m_page(nullptr), m_retiredPages() {}
 
-    if (size <= DEFAULT_PAGE_SIZE) {
-        { // Try to get a free page from free page queue.
-            std::lock_guard<std::mutex> lock(m_uploadPageQueueMutex);
-            if (!m_retiredUploadPages.empty()) {
-                auto &front = m_retiredUploadPages.front();
-                if (m_renderDevice.isFenceReached(front.first)) {
-                    auto *page = front.second;
-                    m_retiredUploadPages.pop();
-                    return page;
-                }
-            }
-        }
+ink::DynamicBufferAllocator::DynamicBufferAllocator() noexcept
+    : m_renderDevice(nullptr), m_offset(), m_page(nullptr), m_retiredPages() {}
 
-        { // Create a new page.
-            DynamicBufferPage           newPage(DynamicBufferType::Upload);
-            std::lock_guard<std::mutex> lock(m_pagePoolMutex);
-            return std::addressof(m_pagePool.emplace(std::move(newPage)));
-        }
-    }
-
-    return new DynamicBufferPage(DynamicBufferType::Upload, size);
+ink::DynamicBufferAllocator::DynamicBufferAllocator(DynamicBufferAllocator &&other) noexcept
+    : m_renderDevice(other.m_renderDevice),
+      m_offset(other.m_offset),
+      m_page(other.m_page),
+      m_retiredPages(std::move(other.m_retiredPages)) {
+    other.m_offset = 0;
+    other.m_page   = nullptr;
 }
 
-auto DynamicBufferPageManager::newUnorderedAccessPage(std::size_t size) noexcept
-    -> DynamicBufferPage * {
-    // Align up size.
-    size = (size + 0xFF) & ~std::size_t(0xFF);
+ink::DynamicBufferAllocator::~DynamicBufferAllocator() noexcept {
+    if (m_page != nullptr)
+        m_retiredPages.push_back(m_page);
 
-    if (size <= DEFAULT_PAGE_SIZE) {
-        { // Try to get a free page from free page queue.
-            std::lock_guard<std::mutex> lock(m_unorderedAccessQueueMutex);
-            if (!m_retiredUnorderedAccessPages.empty()) {
-                auto &front = m_retiredUnorderedAccessPages.front();
-                if (m_renderDevice.isFenceReached(front.first)) {
-                    auto *page = front.second;
-                    m_retiredUnorderedAccessPages.pop();
-                    return page;
-                }
-            }
-        }
-
-        { // Create a new page.
-            DynamicBufferPage newPage(DynamicBufferType::UnorderedAccess);
-
-            std::lock_guard<std::mutex> lock(m_pagePoolMutex);
-            return std::addressof(m_pagePool.emplace(std::move(newPage)));
-        }
-    }
-
-    return new DynamicBufferPage(DynamicBufferType::UnorderedAccess, size);
+    if (!m_retiredPages.empty())
+        m_renderDevice->releaseDynamicBufferPages(m_renderDevice->signalFence(),
+                                                  m_retiredPages.size(), m_retiredPages.data());
 }
 
-auto DynamicBufferPageManager::freePages(std::uint64_t       fenceValue,
-                                         std::size_t         count,
-                                         DynamicBufferPage **pages) noexcept -> void {
-    DynamicBufferPage **pagesEnd = pages + count;
+auto ink::DynamicBufferAllocator::operator=(DynamicBufferAllocator &&other) noexcept
+    -> DynamicBufferAllocator & {
+    if (this == &other)
+        return *this;
 
-    { // Free default upload pages.
-        std::lock_guard<std::mutex> lock(m_uploadPageQueueMutex);
-        for (auto *page = pages; page != pagesEnd; ++page) {
-            if (!(*page)->isDefaultPage())
-                continue;
+    if (m_page != nullptr)
+        m_retiredPages.push_back(m_page);
 
-            if (!(*page)->isUploadBuffer())
-                continue;
+    if (!m_retiredPages.empty())
+        m_renderDevice->releaseDynamicBufferPages(m_renderDevice->signalFence(),
+                                                  m_retiredPages.size(), m_retiredPages.data());
 
-            m_retiredUploadPages.emplace(fenceValue, *page);
-        }
-    }
+    m_renderDevice = other.m_renderDevice;
+    m_offset       = other.m_offset;
+    m_page         = other.m_page;
+    m_retiredPages = std::move(other.m_retiredPages);
 
-    { // Free unordered access pages.
-        std::lock_guard<std::mutex> lock(m_unorderedAccessQueueMutex);
-        for (auto *page = pages; page != pagesEnd; ++page) {
-            if (!(*page)->isDefaultPage())
-                continue;
+    other.m_offset = 0;
+    other.m_page   = nullptr;
 
-            if ((*page)->isUploadBuffer())
-                continue;
-
-            m_retiredUnorderedAccessPages.emplace(fenceValue, *page);
-        }
-    }
-
-    { // Free deletion pages.
-        std::lock_guard<std::mutex> lock(m_deletionQueueMutex);
-        while (!m_deletionQueue.empty()) {
-            auto &front = m_deletionQueue.front();
-            if (m_renderDevice.isFenceReached(front.first)) {
-                delete front.second;
-                m_deletionQueue.pop();
-            } else {
-                break;
-            }
-        }
-
-        for (auto *page = pages; page != pagesEnd; ++page) {
-            if ((*page)->isDefaultPage())
-                continue;
-            m_deletionQueue.emplace(fenceValue, *page);
-        }
-    }
+    return *this;
 }
 
-auto DynamicBufferPageManager::singleton() noexcept -> DynamicBufferPageManager & {
-    static DynamicBufferPageManager instance;
-    return instance;
-}
+namespace {
+
+/// @brief
+///   Default dynamic buffer page size is 16Mib.
+constexpr const std::size_t DYNAMIC_BUFFER_PAGE_SIZE = 0x1000000;
 
 } // namespace
 
-ink::DynamicBufferAllocator::DynamicBufferAllocator() noexcept
-    : m_uploadPage(),
-      m_uploadPageOffset(),
-      m_unorderedAccessPage(),
-      m_unorderedAccessPageOffset(),
-      m_retiredPages() {}
-
-ink::DynamicBufferAllocator::~DynamicBufferAllocator() noexcept {
-    if (m_uploadPage != nullptr)
-        m_retiredPages.push_back(m_uploadPage);
-    if (m_unorderedAccessPage != nullptr)
-        m_retiredPages.push_back(m_unorderedAccessPage);
-
-    if (!m_retiredPages.empty()) {
-        auto &dev        = RenderDevice::singleton();
-        auto  fenceValue = dev.signalFence();
-
-        auto &manager = DynamicBufferPageManager::singleton();
-        manager.freePages(fenceValue, m_retiredPages.size(),
-                          reinterpret_cast<DynamicBufferPage **>(m_retiredPages.data()));
-    }
-}
-
-auto ink::DynamicBufferAllocator::newUploadBuffer(std::size_t size, std::size_t alignment) noexcept
+auto ink::DynamicBufferAllocator::allocate(std::size_t size, std::size_t alignment)
     -> DynamicBufferAllocation {
     // Align up allocate size.
-    size = (size + alignment - 1) & ~std::size_t(alignment - 1);
-
-    auto &manager = DynamicBufferPageManager::singleton();
+    assert((alignment & (alignment - 1)) == 0 && "Alignment must be a power of 2.");
+    size = (size + alignment - 1) & ~(alignment - 1);
 
     // Allocate a single page if size is greater than default page size.
-    if (size >= DEFAULT_PAGE_SIZE) {
-        DynamicBufferPage *page = manager.newUploadPage(size);
+    if (size >= DYNAMIC_BUFFER_PAGE_SIZE) {
+        DynamicBufferPage *page = m_renderDevice->acquireDynamicBufferPage(size);
         m_retiredPages.push_back(page);
 
-        return DynamicBufferAllocation{
+        return {
             /* resource   = */ page,
             /* size       = */ size,
             /* offset     = */ 0,
@@ -859,179 +148,164 @@ auto ink::DynamicBufferAllocator::newUploadBuffer(std::size_t size, std::size_t 
         };
     }
 
+    // Align up offset.
     std::size_t extraSize = 0;
-    if (m_uploadPage != nullptr)
-        extraSize = ((m_uploadPageOffset + alignment - 1) & ~std::size_t(alignment - 1)) -
-                    m_uploadPageOffset;
-
-    // No enough space in current page, retire current page.
-    if (m_uploadPage != nullptr && m_uploadPageOffset + size + extraSize > DEFAULT_PAGE_SIZE) {
-        m_retiredPages.push_back(m_uploadPage);
-        m_uploadPage = nullptr;
+    if (m_page != nullptr) {
+        extraSize = ((m_offset + alignment - 1) & ~(alignment - 1)) - m_offset;
+        if (m_offset + size + extraSize > DYNAMIC_BUFFER_PAGE_SIZE) {
+            m_retiredPages.push_back(m_page);
+            m_page = nullptr;
+        }
     }
 
     // Allocate a new page if current page is null.
-    if (m_uploadPage == nullptr) {
-        m_uploadPage       = manager.newUploadPage(DEFAULT_PAGE_SIZE);
-        m_uploadPageOffset = 0;
-        extraSize          = 0;
+    if (m_page == nullptr) {
+        m_page    = m_renderDevice->acquireDynamicBufferPage(DYNAMIC_BUFFER_PAGE_SIZE);
+        m_offset  = 0;
+        extraSize = 0;
     }
-
-    auto *const page = static_cast<DynamicBufferPage *>(m_uploadPage);
 
     DynamicBufferAllocation allocation{
-        /* resource   = */ page,
+        /* resource   = */ m_page,
         /* size       = */ size,
-        /* offset     = */ m_uploadPageOffset + extraSize,
-        /* data       = */ page->map<std::uint8_t>() + m_uploadPageOffset + extraSize,
-        /* gpuAddress = */ page->gpuAddress() + m_uploadPageOffset + extraSize,
+        /* offset     = */ m_offset + extraSize,
+        /* data       = */ m_page->map<std::uint8_t>() + m_offset + extraSize,
+        /* gpuAddress = */ m_page->gpuAddress() + m_offset + extraSize,
     };
 
-    m_uploadPageOffset += size + extraSize;
-    return allocation;
-}
-
-auto ink::DynamicBufferAllocator::newUnorderedAccessBuffer(std::size_t size) noexcept
-    -> DynamicBufferAllocation {
-    // Align up allocate size.
-    size = (size + 0xFF) & ~std::size_t(0xFF);
-
-    auto &manager = DynamicBufferPageManager::singleton();
-
-    // Allocate a single page if size is greater than default page size.
-    if (size >= DEFAULT_PAGE_SIZE) {
-        auto *page = manager.newUnorderedAccessPage(size);
-        m_retiredPages.push_back(page);
-
-        return DynamicBufferAllocation{
-            /* resource   = */ page,
-            /* size       = */ size,
-            /* offset     = */ 0,
-            /* data       = */ page->map<void>(),
-            /* gpuAddress = */ page->gpuAddress(),
-        };
-    }
-
-    // There is no enough space in current page, retire current page.
-    if (m_unorderedAccessPage != nullptr &&
-        m_unorderedAccessPageOffset + size > DEFAULT_PAGE_SIZE) {
-        m_retiredPages.push_back(m_unorderedAccessPage);
-        m_unorderedAccessPage = nullptr;
-    }
-
-    // Allocate a new page if current page is null.
-    if (m_unorderedAccessPage == nullptr) {
-        m_unorderedAccessPage       = manager.newUnorderedAccessPage(DEFAULT_PAGE_SIZE);
-        m_unorderedAccessPageOffset = 0;
-    }
-
-    auto *const page = static_cast<DynamicBufferPage *>(m_unorderedAccessPage);
-
-    DynamicBufferAllocation allocation{
-        /* resource   = */ page,
-        /* size       = */ size,
-        /* offset     = */ m_unorderedAccessPageOffset,
-        /* data       = */ page->map<std::uint8_t>() + m_unorderedAccessPageOffset,
-        /* gpuAddress = */ page->gpuAddress() + m_unorderedAccessPageOffset,
-    };
-
-    m_unorderedAccessPageOffset += size;
+    m_offset += size + extraSize;
     return allocation;
 }
 
 auto ink::DynamicBufferAllocator::reset(std::uint64_t fenceValue) noexcept -> void {
-    auto &manager = DynamicBufferPageManager::singleton();
-
     if (!m_retiredPages.empty()) {
-        manager.freePages(fenceValue, m_retiredPages.size(),
-                          reinterpret_cast<DynamicBufferPage **>(m_retiredPages.data()));
+        m_renderDevice->releaseDynamicBufferPages(fenceValue, m_retiredPages.size(),
+                                                  m_retiredPages.data());
         m_retiredPages.clear();
     }
 }
 
+ink::CommandBuffer::CommandBuffer(RenderDevice &renderDevice, ID3D12Device5 *device)
+    : m_renderDevice(&renderDevice),
+      m_cmdList(),
+      m_allocator(renderDevice.acquireCommandAllocator()),
+      m_lastSubmitFence(),
+      m_bufferAllocator(renderDevice),
+      m_graphicsRootSignature(),
+      m_computeRootSignature(),
+      m_dynamicDescriptorHeap(renderDevice, device),
+      m_renderPass() {
+    HRESULT hr = device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_allocator, nullptr,
+                                           IID_PPV_ARGS(m_cmdList.GetAddressOf()));
+    if (FAILED(hr)) {
+        // Avoid resource leak.
+        renderDevice.releaseCommandAllocator(0, m_allocator);
+        throw RenderAPIException(hr, "Failed to create new command buffer.");
+    }
+}
+
 ink::CommandBuffer::CommandBuffer() noexcept
-    : m_cmdList(),
+    : m_renderDevice(),
+      m_cmdList(),
       m_allocator(),
-      m_lastSubmitFenceValue(),
+      m_lastSubmitFence(),
       m_bufferAllocator(),
       m_graphicsRootSignature(),
       m_computeRootSignature(),
-      m_dynamicViewHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV),
-      m_dynamicSamplerHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER) {
-    [[maybe_unused]] HRESULT hr;
+      m_dynamicDescriptorHeap(),
+      m_renderPass() {}
 
-    auto &dev = RenderDevice::singleton();
-
-    // Try to acquire a new command allocator.
-    m_allocator = dev.newCommandAllocator();
-    hr = dev.device()->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_allocator, nullptr,
-                                         IID_PPV_ARGS(m_cmdList.GetAddressOf()));
-    inkAssert(SUCCEEDED(hr), u"Failed to create direct command list: 0x{:X}.",
-              static_cast<std::uint32_t>(hr));
+ink::CommandBuffer::CommandBuffer(CommandBuffer &&other) noexcept
+    : m_renderDevice(other.m_renderDevice),
+      m_cmdList(std::move(other.m_cmdList)),
+      m_allocator(other.m_allocator),
+      m_lastSubmitFence(other.m_lastSubmitFence),
+      m_bufferAllocator(std::move(other.m_bufferAllocator)),
+      m_graphicsRootSignature(other.m_graphicsRootSignature),
+      m_computeRootSignature(other.m_computeRootSignature),
+      m_dynamicDescriptorHeap(std::move(other.m_dynamicDescriptorHeap)),
+      m_renderPass(other.m_renderPass) {
+    other.m_allocator             = nullptr;
+    other.m_graphicsRootSignature = nullptr;
+    other.m_computeRootSignature  = nullptr;
 }
 
 ink::CommandBuffer::~CommandBuffer() noexcept {
-    if (m_allocator != nullptr) {
-        auto &dev = RenderDevice::singleton();
-        dev.freeCommandAllocator(m_lastSubmitFenceValue, m_allocator);
-    }
+    if (m_allocator != nullptr)
+        m_renderDevice->releaseCommandAllocator(m_lastSubmitFence, m_allocator);
 }
 
-auto ink::CommandBuffer::submit() noexcept -> std::uint64_t {
+auto ink::CommandBuffer::operator=(CommandBuffer &&other) noexcept -> CommandBuffer & {
+    if (this == &other)
+        return *this;
+
+    if (m_allocator != nullptr)
+        m_renderDevice->releaseCommandAllocator(m_lastSubmitFence, m_allocator);
+
+    m_renderDevice          = other.m_renderDevice;
+    m_cmdList               = std::move(other.m_cmdList);
+    m_allocator             = other.m_allocator;
+    m_lastSubmitFence       = other.m_lastSubmitFence;
+    m_bufferAllocator       = std::move(other.m_bufferAllocator);
+    m_graphicsRootSignature = other.m_graphicsRootSignature;
+    m_computeRootSignature  = other.m_computeRootSignature;
+    m_dynamicDescriptorHeap = std::move(other.m_dynamicDescriptorHeap);
+    m_renderPass            = other.m_renderPass;
+
+    other.m_allocator             = nullptr;
+    other.m_graphicsRootSignature = nullptr;
+    other.m_computeRootSignature  = nullptr;
+
+    return *this;
+}
+
+auto ink::CommandBuffer::submit() -> void {
     m_cmdList->Close();
 
-    auto &dev = RenderDevice::singleton();
-
-    { // Submit command list to execute.
+    { // Submit command list.
         ID3D12CommandList *list = m_cmdList.Get();
-        dev.commandQueue()->ExecuteCommandLists(1, &list);
+        m_renderDevice->m_commandQueue->ExecuteCommandLists(1, &list);
     }
 
     // Acquire fence value.
-    m_lastSubmitFenceValue = dev.signalFence();
+    m_lastSubmitFence = m_renderDevice->signalFence();
 
     // Clean up temporary buffer allocator.
-    m_bufferAllocator.reset(m_lastSubmitFenceValue);
+    m_bufferAllocator.reset(m_lastSubmitFence);
 
-    // Clean up root signatures.
+    // Clean up root signature.
+    m_dynamicDescriptorHeap.reset(m_lastSubmitFence);
     m_graphicsRootSignature = nullptr;
     m_computeRootSignature  = nullptr;
-    m_dynamicViewHeap.reset(m_lastSubmitFenceValue);
-    m_dynamicSamplerHeap.reset(m_lastSubmitFenceValue);
 
     // Reset command allocator.
-    dev.freeCommandAllocator(m_lastSubmitFenceValue, m_allocator);
-    m_allocator = dev.newCommandAllocator();
-
-    // Reset command list.
+    m_renderDevice->releaseCommandAllocator(m_lastSubmitFence, m_allocator);
+    m_allocator = nullptr; // Make reset() available if exception is thrown.
+    m_allocator = m_renderDevice->acquireCommandAllocator();
     m_cmdList->Reset(m_allocator, nullptr);
-
-    return m_lastSubmitFenceValue;
 }
 
-auto ink::CommandBuffer::reset() noexcept -> void {
+auto ink::CommandBuffer::reset() -> void {
     m_cmdList->Close();
-    m_bufferAllocator.reset(m_lastSubmitFenceValue);
 
-    // Clean up root signatures.
+    // Clean up temporary buffer allocaator.
+    m_bufferAllocator.reset(m_lastSubmitFence);
+
+    // Clean up root signature.
+    m_dynamicDescriptorHeap.reset(m_lastSubmitFence);
     m_graphicsRootSignature = nullptr;
     m_computeRootSignature  = nullptr;
-    m_dynamicViewHeap.reset(m_lastSubmitFenceValue);
-    m_dynamicSamplerHeap.reset(m_lastSubmitFenceValue);
 
-    if (m_allocator == nullptr) {
-        auto &dev   = RenderDevice::singleton();
-        m_allocator = dev.newCommandAllocator();
-    } else {
+    if (m_allocator == nullptr)
+        m_allocator = m_renderDevice->acquireCommandAllocator();
+    else
         m_allocator->Reset();
-    }
 
     m_cmdList->Reset(m_allocator, nullptr);
 }
 
-auto ink::CommandBuffer::waitForComplete() const noexcept -> void {
-    auto &dev = RenderDevice::singleton();
-    dev.sync(m_lastSubmitFenceValue);
+auto ink::CommandBuffer::waitForComplete() const -> void {
+    m_renderDevice->sync(m_lastSubmitFence);
 }
 
 auto ink::CommandBuffer::transition(GpuResource &resource, D3D12_RESOURCE_STATES newState) noexcept
@@ -1039,8 +313,8 @@ auto ink::CommandBuffer::transition(GpuResource &resource, D3D12_RESOURCE_STATES
     if (resource.state() == newState)
         return;
 
-    D3D12_RESOURCE_BARRIER barriers[2];
-    std::uint32_t          barrierCount = 1U;
+    std::array<D3D12_RESOURCE_BARRIER, 2> barriers;
+    std::uint32_t                         barrierCount = 1U;
 
     const auto oldState = resource.state();
 
@@ -1061,22 +335,239 @@ auto ink::CommandBuffer::transition(GpuResource &resource, D3D12_RESOURCE_STATES
         barrierCount = 2U;
     }
 
-    m_cmdList->ResourceBarrier(barrierCount, barriers);
+    m_cmdList->ResourceBarrier(barrierCount, barriers.data());
 }
 
-auto ink::CommandBuffer::unorderedAccessBarrier(GpuResource &resource) noexcept -> void {
-    D3D12_RESOURCE_BARRIER barrier;
-    barrier.Type          = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-    barrier.Flags         = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    barrier.UAV.pResource = resource.m_resource.Get();
-    m_cmdList->ResourceBarrier(1, &barrier);
+// MSVC analyzer seems to incorrectly report the C28020 warning.
+#if !defined(__clang__) && defined(_MSC_VER)
+#    pragma warning(push)
+#    pragma warning(disable : 28020)
+#endif
+
+auto ink::CommandBuffer::beginRenderPass(const RenderPass &renderPass) noexcept -> void {
+    assert(renderPass.renderTargetCount <= 8);
+
+    { // Transition states.
+        std::array<D3D12_RESOURCE_BARRIER, 18> barriers;
+        std::uint32_t                          count = 0;
+
+        for (std::uint32_t i = 0; i < renderPass.renderTargetCount; ++i) {
+            const auto &info = renderPass.renderTargets[i];
+            if (info.renderTarget->state() != info.stateBefore) {
+                const auto oldState = info.renderTarget->state();
+                const auto newState = info.stateBefore;
+
+                auto &barrier                  = barriers[count++];
+                barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+                barrier.Transition.pResource   = info.renderTarget->m_resource.Get();
+                barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+                barrier.Transition.StateBefore = oldState;
+                barrier.Transition.StateAfter  = newState;
+
+                info.renderTarget->m_usageState = newState;
+
+                if ((newState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS) &&
+                    !(oldState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS)) {
+                    auto &uavBarrier         = barriers[count++];
+                    uavBarrier.Type          = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                    uavBarrier.Flags         = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+                    uavBarrier.UAV.pResource = info.renderTarget->m_resource.Get();
+                }
+            }
+        }
+
+        if (renderPass.depthTarget.depthTarget &&
+            renderPass.depthTarget.depthTarget->state() != renderPass.depthTarget.stateBefore) {
+            const auto oldState = renderPass.depthTarget.depthTarget->state();
+            const auto newState = renderPass.depthTarget.stateBefore;
+
+            auto &barrier                  = barriers[count++];
+            barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+            barrier.Transition.pResource   = renderPass.depthTarget.depthTarget->m_resource.Get();
+            barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            barrier.Transition.StateBefore = oldState;
+            barrier.Transition.StateAfter  = newState;
+
+            renderPass.depthTarget.depthTarget->m_usageState = newState;
+
+            if ((newState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS) &&
+                !(oldState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS)) {
+                auto &uavBarrier         = barriers[count++];
+                uavBarrier.Type          = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                uavBarrier.Flags         = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+                uavBarrier.UAV.pResource = renderPass.depthTarget.depthTarget->m_resource.Get();
+            }
+        }
+
+        if (count > 0)
+            m_cmdList->ResourceBarrier(count, barriers.data());
+    }
+
+    // Begin render pass.
+    std::array<D3D12_RENDER_PASS_RENDER_TARGET_DESC, 8> renderTargets;
+    D3D12_RENDER_PASS_DEPTH_STENCIL_DESC                depthTarget;
+    D3D12_RENDER_PASS_DEPTH_STENCIL_DESC               *depthTargetPtr = nullptr;
+
+    for (std::uint32_t i = 0; i < renderPass.renderTargetCount; ++i) {
+        const auto &info               = renderPass.renderTargets[i];
+        renderTargets[i].cpuDescriptor = info.renderTarget->renderTargetView();
+
+        // Begin access info.
+        renderTargets[i].BeginningAccess.Type =
+            static_cast<D3D12_RENDER_PASS_BEGINNING_ACCESS_TYPE>(info.loadAction);
+        renderTargets[i].BeginningAccess.Clear.ClearValue.Format = info.renderTarget->pixelFormat();
+
+        const Color &clearColor = info.renderTarget->clearColor();
+        renderTargets[i].BeginningAccess.Clear.ClearValue.Color[0] = clearColor.red;
+        renderTargets[i].BeginningAccess.Clear.ClearValue.Color[1] = clearColor.green;
+        renderTargets[i].BeginningAccess.Clear.ClearValue.Color[2] = clearColor.blue;
+        renderTargets[i].BeginningAccess.Clear.ClearValue.Color[3] = clearColor.alpha;
+
+        // End access info.
+        renderTargets[i].EndingAccess.Type =
+            static_cast<D3D12_RENDER_PASS_ENDING_ACCESS_TYPE>(info.storeAction);
+        renderTargets[i].EndingAccess.Resolve = {};
+    }
+
+    if (renderPass.depthTarget.depthTarget != nullptr) { // Set depth target info.
+        const auto &info          = renderPass.depthTarget;
+        depthTarget.cpuDescriptor = info.depthTarget->depthStencilView();
+
+        // Begin access info.
+        depthTarget.DepthBeginningAccess.Type =
+            static_cast<D3D12_RENDER_PASS_BEGINNING_ACCESS_TYPE>(info.depthLoadAction);
+        depthTarget.DepthBeginningAccess.Clear.ClearValue.Format = info.depthTarget->pixelFormat();
+        depthTarget.DepthBeginningAccess.Clear.ClearValue.DepthStencil.Depth =
+            info.depthTarget->clearDepth();
+        depthTarget.DepthBeginningAccess.Clear.ClearValue.DepthStencil.Stencil =
+            info.depthTarget->clearStencil();
+        depthTarget.StencilBeginningAccess.Type =
+            static_cast<D3D12_RENDER_PASS_BEGINNING_ACCESS_TYPE>(info.stencilLoadAction);
+        depthTarget.StencilBeginningAccess.Clear.ClearValue.Format =
+            info.depthTarget->pixelFormat();
+        depthTarget.StencilBeginningAccess.Clear.ClearValue.DepthStencil.Depth =
+            info.depthTarget->clearDepth();
+        depthTarget.StencilBeginningAccess.Clear.ClearValue.DepthStencil.Stencil =
+            info.depthTarget->clearStencil();
+
+        // End access info.
+        depthTarget.DepthEndingAccess.Type =
+            static_cast<D3D12_RENDER_PASS_ENDING_ACCESS_TYPE>(info.depthStoreAction);
+        depthTarget.DepthEndingAccess.Resolve = {};
+        depthTarget.StencilEndingAccess.Type =
+            static_cast<D3D12_RENDER_PASS_ENDING_ACCESS_TYPE>(info.stencilStoreAction);
+        depthTarget.StencilEndingAccess.Resolve = {};
+
+        depthTargetPtr = &depthTarget;
+    }
+
+    m_cmdList->BeginRenderPass(renderPass.renderTargetCount, renderTargets.data(), depthTargetPtr,
+                               D3D12_RENDER_PASS_FLAG_NONE);
+
+    m_renderPass = renderPass;
 }
+
+auto ink::CommandBuffer::endRenderPass() noexcept -> void {
+    m_cmdList->EndRenderPass();
+
+    // Transition resource states.
+    std::array<D3D12_RESOURCE_BARRIER, 18> barriers;
+    std::uint32_t                          count = 0;
+
+    for (std::uint32_t i = 0; i < m_renderPass.renderTargetCount; ++i) {
+        const auto oldState = m_renderPass.renderTargets[i].renderTarget->state();
+        const auto newState = m_renderPass.renderTargets[i].stateAfter;
+
+        if (oldState == newState)
+            continue;
+
+        auto &barrier                = barriers[count++];
+        barrier.Type                 = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barrier.Flags                = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+        barrier.Transition.pResource = m_renderPass.renderTargets[i].renderTarget->m_resource.Get();
+        barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        barrier.Transition.StateBefore = oldState;
+        barrier.Transition.StateAfter  = newState;
+
+        m_renderPass.renderTargets[i].renderTarget->m_usageState = newState;
+
+        if ((newState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS) &&
+            !(oldState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS)) {
+            auto &uavBarrier         = barriers[count++];
+            uavBarrier.Type          = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+            uavBarrier.Flags         = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+            uavBarrier.UAV.pResource = m_renderPass.renderTargets[i].renderTarget->m_resource.Get();
+        }
+    }
+
+    // Transition depth target.
+    if (m_renderPass.depthTarget.depthTarget != nullptr) {
+        const auto oldState = m_renderPass.depthTarget.depthTarget->state();
+        const auto newState = m_renderPass.depthTarget.stateAfter;
+
+        if (oldState != newState) {
+            auto &barrier                  = barriers[count++];
+            barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+            barrier.Transition.pResource   = m_renderPass.depthTarget.depthTarget->m_resource.Get();
+            barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            barrier.Transition.StateBefore = oldState;
+            barrier.Transition.StateAfter  = newState;
+
+            m_renderPass.depthTarget.depthTarget->m_usageState = newState;
+
+            if ((newState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS) &&
+                !(oldState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS)) {
+                auto &uavBarrier         = barriers[count++];
+                uavBarrier.Type          = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                uavBarrier.Flags         = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+                uavBarrier.UAV.pResource = m_renderPass.depthTarget.depthTarget->m_resource.Get();
+            }
+        }
+    }
+
+    if (count > 0)
+        m_cmdList->ResourceBarrier(count, barriers.data());
+}
+
+#if !defined(__clang__) && defined(_MSC_VER)
+#    pragma warning(pop)
+#endif
 
 auto ink::CommandBuffer::copy(GpuResource &src, GpuResource &dst) noexcept -> void {
-    inkAssert(src.state() & D3D12_RESOURCE_STATE_COPY_SOURCE,
-              u"Source resource must be in D3D12_RESOURCE_STATE_COPY_SOURCE resource state.");
-    inkAssert(dst.state() & D3D12_RESOURCE_STATE_COPY_DEST,
-              u"Destination resource must be in D3D12_RESOURCE_STATE_COPY_DEST resource state.");
+    { // Transition resource state.
+        std::array<D3D12_RESOURCE_BARRIER, 2> barriers;
+        std::uint32_t                         count = 0;
+
+        if (!(src.state() & D3D12_RESOURCE_STATE_COPY_SOURCE)) {
+            auto &barrier                  = barriers[count++];
+            barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+            barrier.Transition.pResource   = src.m_resource.Get();
+            barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            barrier.Transition.StateBefore = src.state();
+            barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_COPY_SOURCE;
+
+            src.m_usageState = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        }
+
+        if (!(dst.state() & D3D12_RESOURCE_STATE_COPY_DEST)) {
+            auto &barrier                  = barriers[count++];
+            barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+            barrier.Transition.pResource   = dst.m_resource.Get();
+            barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            barrier.Transition.StateBefore = dst.state();
+            barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_COPY_DEST;
+
+            dst.m_usageState = D3D12_RESOURCE_STATE_COPY_DEST;
+        }
+
+        if (count > 0)
+            m_cmdList->ResourceBarrier(count, barriers.data());
+    }
 
     m_cmdList->CopyResource(dst.m_resource.Get(), src.m_resource.Get());
 }
@@ -1086,10 +577,37 @@ auto ink::CommandBuffer::copyBuffer(GpuResource &src,
                                     GpuResource &dst,
                                     std::size_t  dstOffset,
                                     std::size_t  size) noexcept -> void {
-    inkAssert(src.state() & D3D12_RESOURCE_STATE_COPY_SOURCE,
-              u"Source resource must be in D3D12_RESOURCE_STATE_COPY_SOURCE resource state.");
-    inkAssert(dst.state() & D3D12_RESOURCE_STATE_COPY_DEST,
-              u"Destination resource must be in D3D12_RESOURCE_STATE_COPY_DEST resource state.");
+    { // Transition resource state.
+        std::array<D3D12_RESOURCE_BARRIER, 2> barriers;
+        std::uint32_t                         count = 0;
+
+        if (!(src.state() & D3D12_RESOURCE_STATE_COPY_SOURCE)) {
+            auto &barrier                  = barriers[count++];
+            barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+            barrier.Transition.pResource   = src.m_resource.Get();
+            barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            barrier.Transition.StateBefore = src.state();
+            barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_COPY_SOURCE;
+
+            src.m_usageState = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        }
+
+        if (!(dst.state() & D3D12_RESOURCE_STATE_COPY_DEST)) {
+            auto &barrier                  = barriers[count++];
+            barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+            barrier.Transition.pResource   = dst.m_resource.Get();
+            barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            barrier.Transition.StateBefore = dst.state();
+            barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_COPY_DEST;
+
+            dst.m_usageState = D3D12_RESOURCE_STATE_COPY_DEST;
+        }
+
+        if (count > 0)
+            m_cmdList->ResourceBarrier(count, barriers.data());
+    }
 
     m_cmdList->CopyBufferRegion(dst.m_resource.Get(), dstOffset, src.m_resource.Get(), srcOffset,
                                 size);
@@ -1098,12 +616,14 @@ auto ink::CommandBuffer::copyBuffer(GpuResource &src,
 auto ink::CommandBuffer::copyBuffer(const void  *src,
                                     GpuResource &dst,
                                     std::size_t  dstOffset,
-                                    std::size_t  size) noexcept -> void {
-    inkAssert(dst.state() & D3D12_RESOURCE_STATE_COPY_DEST,
-              u"Destination resource must be in D3D12_RESOURCE_STATE_COPY_DEST resource state.");
-
-    DynamicBufferAllocation allocation(m_bufferAllocator.newUploadBuffer(size));
+                                    std::size_t  size) -> void {
+    DynamicBufferAllocation allocation(m_bufferAllocator.allocate(size));
     std::memcpy(allocation.data, src, size);
+
+    // Transition state.
+    if (!(dst.state() & D3D12_RESOURCE_STATE_COPY_DEST))
+        this->transition(dst, D3D12_RESOURCE_STATE_COPY_DEST);
+
     m_cmdList->CopyBufferRegion(dst.m_resource.Get(), dstOffset,
                                 allocation.resource->m_resource.Get(), allocation.offset, size);
 }
@@ -1114,21 +634,16 @@ auto ink::CommandBuffer::copyTexture(const void   *src,
                                      std::uint32_t width,
                                      std::uint32_t height,
                                      PixelBuffer  &dst,
-                                     std::uint32_t subresource) noexcept -> void {
-    inkAssert(subresource < dst.mipLevels(), u"The texture does not have mipmap level {}.",
-              subresource);
-    inkAssert(dst.state() & D3D12_RESOURCE_STATE_COPY_DEST,
-              u"Destination resource must be in D3D12_RESOURCE_STATE_COPY_DEST resource state.");
-
+                                     std::uint32_t subresource) -> void {
     // Align up row pitch.
-    const std::uint32_t rowPitch  = (std::uint32_t(srcRowPitch) + 0xFF) & ~std::uint32_t(0xFF);
-    const std::size_t   allocSize = (std::size_t(height) * rowPitch + 511) & ~std::size_t(511);
+    const std::uint32_t rowPitch  = (std::uint32_t(srcRowPitch) + 0x1FF) & ~std::uint32_t(0x1FF);
+    const std::size_t   allocSize = (std::size_t(height) * rowPitch + 0x1FF) & ~std::size_t(0x1FF);
 
-    DynamicBufferAllocation allocation(m_bufferAllocator.newUploadBuffer(allocSize, 512U));
+    DynamicBufferAllocation allocation(m_bufferAllocator.allocate(allocSize, 512U));
 
     { // Copy data to temporary upload buffer.
-        std::uint8_t       *buffer = static_cast<std::uint8_t *>(allocation.data);
-        const std::uint8_t *srcPtr = static_cast<const std::uint8_t *>(src);
+        auto       *buffer = static_cast<std::uint8_t *>(allocation.data);
+        const auto *srcPtr = static_cast<const std::uint8_t *>(src);
 
         for (std::uint32_t i = 0; i < height; ++i) {
             std::memcpy(buffer, srcPtr, srcRowPitch);
@@ -1153,117 +668,42 @@ auto ink::CommandBuffer::copyTexture(const void   *src,
     dstLoc.Type             = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
     dstLoc.SubresourceIndex = subresource;
 
+    if (!(dst.state() & D3D12_RESOURCE_STATE_COPY_DEST))
+        this->transition(dst, D3D12_RESOURCE_STATE_COPY_DEST);
+
     m_cmdList->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, nullptr);
 }
 
-auto ink::CommandBuffer::setRenderTarget(ColorBuffer &renderTarget) noexcept -> void {
-    inkAssert(renderTarget.state() & D3D12_RESOURCE_STATE_RENDER_TARGET,
-              u"The color buffer is expected to have render target resource state.");
+auto ink::CommandBuffer::setVertexBuffer(std::uint32_t slot,
+                                         std::uint64_t gpuAddress,
+                                         std::uint32_t vertexCount,
+                                         std::uint32_t stride) noexcept -> void {
+    const D3D12_VERTEX_BUFFER_VIEW vbv{
+        /* BufferLocation = */ gpuAddress,
+        /* SizeInBytes    = */ vertexCount * stride,
+        /* StrideInBytes  = */ stride,
+    };
 
-    D3D12_CPU_DESCRIPTOR_HANDLE rtv = renderTarget.renderTargetView();
-    m_cmdList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+    m_cmdList->IASetVertexBuffers(slot, 1, &vbv);
 }
 
-auto ink::CommandBuffer::setRenderTarget(ColorBuffer &renderTarget,
-                                         DepthBuffer &depthTarget) noexcept -> void {
-    inkAssert(renderTarget.state() & D3D12_RESOURCE_STATE_RENDER_TARGET,
-              u"The color buffer is expected to have render target resource state.");
-    inkAssert(depthTarget.state() &
-                  (D3D12_RESOURCE_STATE_DEPTH_READ | D3D12_RESOURCE_STATE_DEPTH_WRITE),
-              u"The depth buffer is expected to have depth read/write resource state.");
+auto ink::CommandBuffer::setVertexBuffer(std::uint32_t           slot,
+                                         const StructuredBuffer &buffer) noexcept -> void {
+    const D3D12_VERTEX_BUFFER_VIEW vbv{
+        /* BufferLocation = */ buffer.gpuAddress(),
+        /* SizeInBytes    = */ buffer.elementSize() * buffer.elementCount(),
+        /* StrideInBytes  = */ buffer.elementSize(),
+    };
 
-    D3D12_CPU_DESCRIPTOR_HANDLE dsv = (depthTarget.state() & D3D12_RESOURCE_STATE_DEPTH_WRITE)
-                                          ? depthTarget.depthStencilView()
-                                          : depthTarget.depthReadOnlyView();
-    D3D12_CPU_DESCRIPTOR_HANDLE rtv = renderTarget.renderTargetView();
-
-    m_cmdList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
-}
-
-#if !defined(__clang__) && defined(_MSC_VER)
-#    pragma warning(push)
-#    pragma warning(disable : 6001)
-#endif
-
-auto ink::CommandBuffer::setRenderTargets(std::size_t   renderTargetCount,
-                                          ColorBuffer **renderTargets) noexcept -> void {
-    inkAssert(renderTargetCount < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT,
-              u"At most {} render targets are supported.", D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT);
-
-    // It is OK to not initialize the memory.
-    D3D12_CPU_DESCRIPTOR_HANDLE rtvs[8];
-    for (std::size_t i = 0; i < renderTargetCount; ++i) {
-        inkAssert(renderTargets[i]->state() & D3D12_RESOURCE_STATE_RENDER_TARGET,
-                  u"The color buffer is expected to have render target resource state.");
-        rtvs[i] = renderTargets[i]->renderTargetView();
-    }
-
-    m_cmdList->OMSetRenderTargets(static_cast<UINT>(renderTargetCount), rtvs, FALSE, nullptr);
-}
-
-auto ink::CommandBuffer::setRenderTargets(std::size_t   renderTargetCount,
-                                          ColorBuffer **renderTargets,
-                                          DepthBuffer  &depthTarget) noexcept -> void {
-    inkAssert(renderTargetCount < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT,
-              u"At most {} render targets are supported.", D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT);
-
-    // It is OK to not initialize the memory.
-    D3D12_CPU_DESCRIPTOR_HANDLE rtvs[8];
-    for (std::size_t i = 0; i < renderTargetCount; ++i) {
-        inkAssert(renderTargets[i]->state() & D3D12_RESOURCE_STATE_RENDER_TARGET,
-                  u"The color buffer is expected to have render target resource state.");
-        rtvs[i] = renderTargets[i]->renderTargetView();
-    }
-
-    inkAssert(depthTarget.state() &
-                  (D3D12_RESOURCE_STATE_DEPTH_READ | D3D12_RESOURCE_STATE_DEPTH_WRITE),
-              u"The depth buffer is expected to have depth read/write resource state.");
-
-    D3D12_CPU_DESCRIPTOR_HANDLE dsv = (depthTarget.state() & D3D12_RESOURCE_STATE_DEPTH_WRITE)
-                                          ? depthTarget.depthStencilView()
-                                          : depthTarget.depthReadOnlyView();
-
-    m_cmdList->OMSetRenderTargets(static_cast<UINT>(renderTargetCount), rtvs, FALSE, &dsv);
-}
-
-#if !defined(__clang__) && defined(_MSC_VER)
-#    pragma warning(pop)
-#endif
-
-auto ink::CommandBuffer::setGraphicsRootSignature(RootSignature &rootSig) noexcept -> void {
-    if (m_graphicsRootSignature == &rootSig)
-        return;
-
-    m_graphicsRootSignature = &rootSig;
-    m_dynamicViewHeap.parseGraphicsRootSignature(rootSig);
-    m_dynamicSamplerHeap.parseGraphicsRootSignature(rootSig);
-    m_cmdList->SetGraphicsRootSignature(rootSig.rootSignature());
-}
-
-auto ink::CommandBuffer::setGraphicsConstantBuffer(std::uint32_t rootParam,
-                                                   const void   *data,
-                                                   std::size_t   size) noexcept -> void {
-    DynamicBufferAllocation allocation(m_bufferAllocator.newUploadBuffer(size));
-    std::memcpy(allocation.data, data, size);
-    m_cmdList->SetGraphicsRootConstantBufferView(rootParam, allocation.gpuAddress);
-}
-
-auto ink::CommandBuffer::setGraphicsConstantBuffer(std::uint32_t rootParam,
-                                                   std::uint32_t offset,
-                                                   const void   *data,
-                                                   std::size_t   size) noexcept -> void {
-    DynamicBufferAllocation allocation(m_bufferAllocator.newUploadBuffer(size));
-    std::memcpy(allocation.data, data, size);
-    D3D12_CONSTANT_BUFFER_VIEW_DESC desc{allocation.gpuAddress, static_cast<UINT>(allocation.size)};
-    m_dynamicViewHeap.bindGraphicsDescriptor(rootParam, offset, desc);
+    m_cmdList->IASetVertexBuffers(slot, 1, &vbv);
 }
 
 auto ink::CommandBuffer::setVertexBuffer(std::uint32_t slot,
                                          const void   *data,
                                          std::uint32_t vertexCount,
-                                         std::uint32_t stride) noexcept -> void {
+                                         std::uint32_t stride) -> void {
     const std::size_t       size = std::size_t(vertexCount) * stride;
-    DynamicBufferAllocation allocation(m_bufferAllocator.newUploadBuffer(size));
+    DynamicBufferAllocation allocation(m_bufferAllocator.allocate(size));
     std::memcpy(allocation.data, data, size);
 
     const D3D12_VERTEX_BUFFER_VIEW vbv{
@@ -1275,87 +715,135 @@ auto ink::CommandBuffer::setVertexBuffer(std::uint32_t slot,
     m_cmdList->IASetVertexBuffers(slot, 1, &vbv);
 }
 
-auto ink::CommandBuffer::setIndexBuffer(const void   *data,
+auto ink::CommandBuffer::setIndexBuffer(std::uint64_t gpuAddress,
                                         std::uint32_t indexCount,
-                                        bool          isUInt32) noexcept -> void {
-    const std::size_t       size = std::size_t(indexCount) * (isUInt32 ? 4U : 2U);
-    DynamicBufferAllocation allocation(m_bufferAllocator.newUploadBuffer(size));
-    std::memcpy(allocation.data, data, size);
-
+                                        std::uint32_t stride) noexcept -> void {
+    assert((stride == 2 || stride == 4) && "Index should either be uint16 or uint32.");
+    const DXGI_FORMAT format = (stride == 2) ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
     const D3D12_INDEX_BUFFER_VIEW ibv{
-        /* BufferLocation = */ allocation.gpuAddress,
-        /* SizeInBytes    = */ static_cast<UINT>(size),
-        /* Format         = */ isUInt32 ? DXGI_FORMAT_R32_UINT : DXGI_FORMAT_R16_UINT,
+        /* BufferLocation = */ gpuAddress,
+        /* SizeInBytes    = */ indexCount * stride,
+        /* Format         = */ format,
     };
 
     m_cmdList->IASetIndexBuffer(&ibv);
 }
 
-auto ink::CommandBuffer::draw(std::uint32_t vertexCount, std::uint32_t firstVertex) noexcept
-    -> void {
-    m_dynamicViewHeap.submitGraphicsDescriptors(m_cmdList.Get());
-    m_dynamicSamplerHeap.submitGraphicsDescriptors(m_cmdList.Get());
+auto ink::CommandBuffer::setIndexBuffer(const StructuredBuffer &buffer) noexcept -> void {
+    const std::uint32_t stride = buffer.elementSize();
+    assert((stride == 2 || stride == 4) && "Index should either be uint16 or uint32.");
 
-    // TODO: Duplicate setting descriptor heaps to avoid D3D12 errors. Use some other methods to
-    // improve performance.
-    ID3D12DescriptorHeap *heaps[2];
-    std::uint32_t         heapCount = 0;
+    const DXGI_FORMAT format = (stride == 2) ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
+    const D3D12_INDEX_BUFFER_VIEW ibv{
+        /* BufferLocation = */ buffer.gpuAddress(),
+        /* SizeInBytes    = */ buffer.elementCount() * stride,
+        /* Format         = */ format,
+    };
 
-    heaps[heapCount] = m_dynamicViewHeap.dynamicDescriptorHeap();
-    if (heaps[heapCount] != nullptr)
-        heapCount += 1;
+    m_cmdList->IASetIndexBuffer(&ibv);
+}
 
-    heaps[heapCount] = m_dynamicSamplerHeap.dynamicDescriptorHeap();
-    if (heaps[heapCount] != nullptr)
-        heapCount += 1;
+auto ink::CommandBuffer::setIndexBuffer(const void   *data,
+                                        std::uint32_t indexCount,
+                                        std::uint32_t stride) -> void {
+    assert((stride == 2 || stride == 4) && "Index should either be uint16 or uint32.");
 
-    m_cmdList->SetDescriptorHeaps(heapCount, heaps);
+    const std::size_t       size = std::size_t(indexCount) * stride;
+    DynamicBufferAllocation allocation(m_bufferAllocator.allocate(size));
+    std::memcpy(allocation.data, data, size);
+
+    const DXGI_FORMAT format = (stride == 2) ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
+    const D3D12_INDEX_BUFFER_VIEW ibv{
+        /* BufferLocation = */ allocation.gpuAddress,
+        /* SizeInBytes    = */ static_cast<UINT>(size),
+        /* Format         = */ format,
+    };
+
+    m_cmdList->IASetIndexBuffer(&ibv);
+}
+
+auto ink::CommandBuffer::setGraphicsRootSignature(RootSignature &rootSig) noexcept -> void {
+    if (m_graphicsRootSignature == &rootSig)
+        return;
+
+    m_graphicsRootSignature = &rootSig;
+    m_dynamicDescriptorHeap.parseGraphicsRootSignature(rootSig);
+    m_cmdList->SetGraphicsRootSignature(rootSig.rootSignature());
+}
+
+auto ink::CommandBuffer::setComputeRootSignature(RootSignature &rootSig) noexcept -> void {
+    if (m_computeRootSignature == &rootSig)
+        return;
+
+    m_computeRootSignature = &rootSig;
+    m_dynamicDescriptorHeap.parseComputeRootSignature(rootSig);
+    m_cmdList->SetComputeRootSignature(rootSig.rootSignature());
+}
+
+auto ink::CommandBuffer::setGraphicsDescriptor(std::uint32_t rootParam,
+                                               std::uint32_t offset,
+                                               CpuDescriptor handle) noexcept -> void {
+    m_dynamicDescriptorHeap.bindGraphicsDescriptor(rootParam, offset, handle);
+}
+
+auto ink::CommandBuffer::setComputeDescriptor(std::uint32_t rootParam,
+                                              std::uint32_t offset,
+                                              CpuDescriptor handle) noexcept -> void {
+    m_dynamicDescriptorHeap.bindComputeDescriptor(rootParam, offset, handle);
+}
+
+auto ink::CommandBuffer::setGraphicsConstantBuffer(std::uint32_t rootParam,
+                                                   const void   *data,
+                                                   std::size_t   size) -> void {
+    DynamicBufferAllocation allocation(m_bufferAllocator.allocate(size));
+    std::memcpy(allocation.data, data, size);
+    m_cmdList->SetGraphicsRootConstantBufferView(rootParam, allocation.gpuAddress);
+}
+
+auto ink::CommandBuffer::setComputeConstantBuffer(std::uint32_t rootParam,
+                                                  const void   *data,
+                                                  std::size_t   size) -> void {
+    DynamicBufferAllocation allocation(m_bufferAllocator.allocate(size));
+    std::memcpy(allocation.data, data, size);
+    m_cmdList->SetComputeRootConstantBufferView(rootParam, allocation.gpuAddress);
+}
+
+auto ink::CommandBuffer::setGraphicsConstantBuffer(std::uint32_t rootParam,
+                                                   std::uint32_t offset,
+                                                   const void   *data,
+                                                   std::size_t   size) -> void {
+    DynamicBufferAllocation allocation(m_bufferAllocator.allocate(size));
+    std::memcpy(allocation.data, data, size);
+    D3D12_CONSTANT_BUFFER_VIEW_DESC desc{allocation.gpuAddress, static_cast<UINT>(allocation.size)};
+    m_dynamicDescriptorHeap.bindGraphicsDescriptor(rootParam, offset, desc);
+}
+
+auto ink::CommandBuffer::setComputeConstantBuffer(std::uint32_t rootParam,
+                                                  std::uint32_t offset,
+                                                  const void   *data,
+                                                  std::size_t   size) -> void {
+    DynamicBufferAllocation allocation(m_bufferAllocator.allocate(size));
+    std::memcpy(allocation.data, data, size);
+    D3D12_CONSTANT_BUFFER_VIEW_DESC desc{allocation.gpuAddress, static_cast<UINT>(allocation.size)};
+    m_dynamicDescriptorHeap.bindComputeDescriptor(rootParam, offset, desc);
+}
+
+auto ink::CommandBuffer::draw(std::uint32_t vertexCount, std::uint32_t firstVertex) -> void {
+    m_dynamicDescriptorHeap.submitGraphicsDescriptors(m_cmdList.Get());
     m_cmdList->DrawInstanced(vertexCount, 1, firstVertex, 0);
 }
 
 auto ink::CommandBuffer::drawIndexed(std::uint32_t indexCount,
                                      std::uint32_t firstIndex,
-                                     std::uint32_t firstVertex) noexcept -> void {
-    m_dynamicViewHeap.submitGraphicsDescriptors(m_cmdList.Get());
-    m_dynamicSamplerHeap.submitGraphicsDescriptors(m_cmdList.Get());
-
-    // TODO: Duplicate setting descriptor heaps to avoid D3D12 errors. Use some other methods to
-    // improve performance.
-    ID3D12DescriptorHeap *heaps[2];
-    std::uint32_t         heapCount = 0;
-
-    heaps[heapCount] = m_dynamicViewHeap.dynamicDescriptorHeap();
-    if (heaps[heapCount] != nullptr)
-        heapCount += 1;
-
-    heaps[heapCount] = m_dynamicSamplerHeap.dynamicDescriptorHeap();
-    if (heaps[heapCount] != nullptr)
-        heapCount += 1;
-
-    m_cmdList->SetDescriptorHeaps(heapCount, heaps);
-    m_cmdList->DrawIndexedInstanced(indexCount, 1, firstIndex, firstVertex, 0);
+                                     std::uint32_t firstVertex) -> void {
+    m_dynamicDescriptorHeap.submitGraphicsDescriptors(m_cmdList.Get());
+    m_cmdList->DrawIndexedInstanced(indexCount, 1, firstIndex, static_cast<INT>(firstVertex), 0);
 }
 
 auto ink::CommandBuffer::dispatch(std::size_t groupX,
                                   std::size_t groupY,
                                   std::size_t groupZ) noexcept -> void {
-    m_dynamicViewHeap.submitComputeDescriptors(m_cmdList.Get());
-    m_dynamicSamplerHeap.submitComputeDescriptors(m_cmdList.Get());
-
-    // TODO: Duplicate setting descriptor heaps to avoid D3D12 errors. Use some other methods to
-    // improve performance.
-    ID3D12DescriptorHeap *heaps[2];
-    std::uint32_t         heapCount = 0;
-
-    heaps[heapCount] = m_dynamicViewHeap.dynamicDescriptorHeap();
-    if (heaps[heapCount] != nullptr)
-        heapCount += 1;
-
-    heaps[heapCount] = m_dynamicSamplerHeap.dynamicDescriptorHeap();
-    if (heaps[heapCount] != nullptr)
-        heapCount += 1;
-
-    m_cmdList->SetDescriptorHeaps(heapCount, heaps);
+    m_dynamicDescriptorHeap.submitComputeDescriptors(m_cmdList.Get());
     m_cmdList->Dispatch(static_cast<UINT>(groupX), static_cast<UINT>(groupY),
                         static_cast<UINT>(groupZ));
 }
