@@ -331,12 +331,15 @@ auto Application::update(float deltaTime) -> void {
 }
 
 auto main() -> int {
-    CoInitialize(nullptr);
     try {
+        HRESULT hr = CoInitialize(nullptr);
+        if (FAILED(hr))
+            throw SystemErrorException(hr, "Failed to initialize COM.");
+
         auto app = std::make_unique<Application>();
         app->run();
+        CoUninitialize();
     } catch (Exception &e) {
         MessageBoxA(nullptr, e.what(), "Error", MB_OK | MB_ICONERROR);
     }
-    CoUninitialize();
 }
