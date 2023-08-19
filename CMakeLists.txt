@@ -19,10 +19,17 @@ endif()
 option(INK_BUILD_STATIC_LIBS "Build static libraries." ON)
 option(INK_BUILD_SHARED_LIBS "Build shared libraries." ON)
 option(INK_BUILD_EXAMPLES "Build examples." OFF)
+option(INK_BUILD_TESTS "Build unit testing" ON)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 add_subdirectory("ink")
+
+# Examples and tests
 if(INK_BUILD_EXAMPLES)
     add_subdirectory("examples")
+endif()
+
+if(INK_BUILD_TESTS)
+    add_subdirectory("tests")
 endif()

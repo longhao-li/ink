@@ -33,9 +33,7 @@ set(
 if(INK_BUILD_STATIC_LIBS)
     add_library(ink-static STATIC ${INK_HEADER_FILES} ${INK_SOURCE_FILES})
     add_library(ink::static ALIAS ink-static)
-    if(NOT INK_BUILD_SHARED_LIBS)
-        add_library(ink::ink ALIAS ink-static)
-    endif()
+    add_library(ink::ink ALIAS ink-static)
 
     set_target_properties(ink-static PROPERTIES OUTPUT_NAME "libink")
 
@@ -64,7 +62,9 @@ endif()
 if(INK_BUILD_SHARED_LIBS)
     add_library(ink-shared SHARED ${INK_HEADER_FILES} ${INK_SOURCE_FILES})
     add_library(ink::shared ALIAS ink-shared)
-    add_library(ink::ink ALIAS ink-shared)
+    if(NOT INK_BUILD_STATIC_LIBS)
+        add_library(ink::ink ALIAS ink-shared)
+    endif()
 
     set_target_properties(
         ink-shared PROPERTIES
