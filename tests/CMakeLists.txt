@@ -2,7 +2,16 @@ file(GLOB_RECURSE INK_TEST_HEADER_FILES "*.hpp")
 file(GLOB_RECURSE INK_TEST_SOURCE_FILES "*.cpp")
 
 include("CPM")
-CPMAddPackage("gh:catchorg/Catch2#v3.4.0")
+
+# Add Catch2
+CPMAddPackage(
+    NAME Catch2
+    GITHUB_REPOSITORY catchorg/Catch2
+    VERSION 3.4.0
+    OPTIONS "BUILD_TESTING OFF"
+            "CATCH_INSTALL_DOCS OFF"
+            "CATCH_INSTALL_EXTRAS OFF"
+)
 
 add_executable(inkTest ${INK_TEST_HEADER_FILES} ${INK_TEST_SOURCE_FILES})
 
