@@ -278,6 +278,79 @@ public:
                                                 std::uint32_t sampleCount = 1) -> DepthBuffer;
 
     /// @brief
+    ///   Create a new 2D texture.
+    ///
+    /// @param width
+    ///   Width in pixel of the texture.
+    /// @param height
+    ///   Height in pixel of the texture.
+    /// @param format
+    ///   Pixel format of the texture.
+    /// @param mipLevels
+    ///   Maximum supported mipmap level by this texture. This value will always be clamped between
+    ///   1 and the maximum available value. Pass 0 to use the maximum available level.
+    ///
+    /// @return
+    ///   The new 2D texture.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to create the texture.
+    [[nodiscard]] InkExport auto new2DTexture(std::uint32_t width,
+                                              std::uint32_t height,
+                                              DXGI_FORMAT   format,
+                                              std::uint32_t mipLevels) -> Texture2D;
+
+    /// @brief
+    ///   Create a new 2D texture array.
+    ///
+    /// @param width
+    ///   Width in pixel of the texture.
+    /// @param height
+    ///   Height in pixel of the texture.
+    /// @param arraySize
+    ///   Number of 2D textures in the texture array. Pass 1 to create a 2D texture instead of 2D
+    ///   texture array.
+    /// @param format
+    ///   Pixel format of the texture.
+    /// @param mipLevels
+    ///   Maximum supported mipmap level by this texture. This value will always be clamped between
+    ///   1 and the maximum available value. Pass 0 to use the maximum available level.
+    ///
+    /// @return
+    ///   The new 2D texture array.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to create the texture.
+    [[nodiscard]] InkExport auto new2DTextureArray(std::uint32_t width,
+                                                   std::uint32_t height,
+                                                   std::uint32_t arraySize,
+                                                   DXGI_FORMAT   format,
+                                                   std::uint32_t mipLevels) -> Texture2D;
+
+    /// @brief
+    ///   Create a new cube texture.
+    ///
+    /// @param width
+    ///   Width in pixel of the texture.
+    /// @param height
+    ///   Height in pixel of the texture.
+    /// @param format
+    ///   Pixel format of the texture.
+    /// @param mipLevels
+    ///   Maximum supported mipmap level by this texture. This value will always be clamped between
+    ///   1 and the maximum available value. Pass 0 to use the maximum available level.
+    ///
+    /// @return
+    ///   The new cube texture.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to create the texture.
+    [[nodiscard]] InkExport auto newCubeTexture(std::uint32_t width,
+                                                std::uint32_t height,
+                                                DXGI_FORMAT   format,
+                                                std::uint32_t mipLevels) -> Texture2D;
+
+    /// @brief
     ///   Create a new swap chain for the specified window.
     ///
     /// @param window
@@ -391,8 +464,6 @@ public:
     ///   Fill mode of the rasterizer.
     /// @param cullMode
     ///   Cull mode of the rasterizer.
-    /// @param sampleCount
-    ///   Sample count of the render targets. This value will be set to 1 if 0 is passed.
     ///
     /// @return
     ///   The new graphics pipeline state.
@@ -409,9 +480,8 @@ public:
                         std::size_t                    numRenderTargets,
                         const DXGI_FORMAT              renderTargetFormats[],
                         DXGI_FORMAT                    depthStencilFormat,
-                        D3D12_FILL_MODE                fillMode    = D3D12_FILL_MODE_SOLID,
-                        D3D12_CULL_MODE                cullMode    = D3D12_CULL_MODE_BACK,
-                        std::uint32_t                  sampleCount = 1) -> GraphicsPipelineState;
+                        D3D12_FILL_MODE                fillMode = D3D12_FILL_MODE_SOLID,
+                        D3D12_CULL_MODE cullMode = D3D12_CULL_MODE_BACK) -> GraphicsPipelineState;
 
     /// @brief
     ///   Create a new graphics pipeline state.

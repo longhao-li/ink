@@ -53,6 +53,15 @@ ink::RootSignature::RootSignature(ID3D12Device5 *device, const D3D12_ROOT_SIGNAT
     }
 }
 
+ink::RootSignature::RootSignature() noexcept
+    : m_rootSignature(),
+      m_staticSamplerCount(),
+      m_tableViewDescriptorCount(),
+      m_tableSamplerCount(),
+      m_viewTableFlags(),
+      m_samplerTableFlags(),
+      m_tableSizes() {}
+
 ink::RootSignature::RootSignature(const RootSignature &other) noexcept = default;
 
 ink::RootSignature::RootSignature(RootSignature &&other) noexcept = default;

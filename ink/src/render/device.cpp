@@ -331,6 +331,28 @@ auto ink::RenderDevice::newDepthBuffer(std::uint32_t width,
     return {*this, m_device.Get(), width, height, format, sampleCount};
 }
 
+auto ink::RenderDevice::new2DTexture(std::uint32_t width,
+                                     std::uint32_t height,
+                                     DXGI_FORMAT   format,
+                                     std::uint32_t mipLevels) -> Texture2D {
+    return {*this, m_device.Get(), width, height, 1, format, mipLevels, false};
+}
+
+auto ink::RenderDevice::new2DTextureArray(std::uint32_t width,
+                                          std::uint32_t height,
+                                          std::uint32_t arraySize,
+                                          DXGI_FORMAT   format,
+                                          std::uint32_t mipLevels) -> Texture2D {
+    return {*this, m_device.Get(), width, height, arraySize, format, mipLevels, false};
+}
+
+auto ink::RenderDevice::newCubeTexture(std::uint32_t width,
+                                       std::uint32_t height,
+                                       DXGI_FORMAT   format,
+                                       std::uint32_t mipLevels) -> Texture2D {
+    return {*this, m_device.Get(), width, height, 6, format, mipLevels, true};
+}
+
 auto ink::RenderDevice::newSwapChain(Window       &window,
                                      std::uint32_t numBuffers,
                                      DXGI_FORMAT   format,
@@ -376,8 +398,7 @@ auto ink::RenderDevice::newGraphicsPipeline(RootSignature                 &rootS
                                             const DXGI_FORMAT              renderTargetFormats[],
                                             DXGI_FORMAT                    depthStencilFormat,
                                             D3D12_FILL_MODE                fillMode,
-                                            D3D12_CULL_MODE                cullMode,
-                                            std::uint32_t sampleCount) -> GraphicsPipelineState {
+                                            D3D12_CULL_MODE cullMode) -> GraphicsPipelineState {
     D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
 
     desc.pRootSignature                        = rootSignature.rootSignature();
@@ -414,14 +435,18 @@ auto ink::RenderDevice::newGraphicsPipeline(RootSignature                 &rootS
             /* RenderTargetWriteMask = */ D3D12_COLOR_WRITE_ENABLE_ALL,
         };
 
-    desc.DepthStencilState.DepthEnable   = FALSE;
-    desc.DepthStencilState.StencilEnable = FALSE;
-    desc.SampleMask                      = UINT_MAX;
-    desc.PrimitiveTopologyType           = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    desc.NumRenderTargets                = static_cast<UINT>(numRenderTargets);
+    desc.DepthStencilState.DepthEnable      = TRUE;
+    desc.DepthStencilState.DepthWriteMask   = D3D12_DEPTH_WRITE_MASK_ALL;
+    desc.DepthStencilState.DepthFunc        = D3D12_COMPARISON_FUNC_LESS;
+    desc.DepthStencilState.StencilEnable    = FALSE;
+    desc.DepthStencilState.StencilReadMask  = D3D12_DEFAULT_STENCIL_READ_MASK;
+    desc.DepthStencilState.StencilWriteMask = D3D12_DEFAULT_STENCIL_WRITE_MASK;
+    desc.SampleMask                         = UINT_MAX;
+    desc.PrimitiveTopologyType              = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    desc.NumRenderTargets                   = static_cast<UINT>(numRenderTargets);
     std::memcpy(desc.RTVFormats, renderTargetFormats, sizeof(DXGI_FORMAT) * numRenderTargets);
     desc.DSVFormat        = depthStencilFormat;
-    desc.SampleDesc.Count = sampleCount;
+    desc.SampleDesc.Count = 1;
 
     return {m_device.Get(), desc};
 }

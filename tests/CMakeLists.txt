@@ -44,7 +44,6 @@ target_precompile_headers(
 )
 
 # Setup test for CMake.
-find_package(Catch2 REQUIRED)
 include("CTest")
 include("Catch")
 catch_discover_tests(inkTest)

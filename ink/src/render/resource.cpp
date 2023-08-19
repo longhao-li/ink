@@ -470,7 +470,6 @@ ink::DepthBuffer::DepthBuffer(RenderDevice &renderDevice,
     this->m_pixelFormat = format;
 
     const DXGI_FORMAT depthFormat = getDepthFormat(format);
-    const bool supportUAV = (sampleCount == 1) && renderDevice.supportUnorderedAccess(depthFormat);
 
     { // Create ID3D12Resource.
         const D3D12_HEAP_PROPERTIES heapProps{
@@ -480,10 +479,6 @@ ink::DepthBuffer::DepthBuffer(RenderDevice &renderDevice,
             /* CreationNodeMask     = */ 0,
             /* VisibleNodeMask      = */ 0,
         };
-
-        D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
-        if (supportUAV)
-            flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
         const D3D12_RESOURCE_DESC desc{
             /* Dimension        = */ D3D12_RESOURCE_DIMENSION_TEXTURE2D,
@@ -499,7 +494,7 @@ ink::DepthBuffer::DepthBuffer(RenderDevice &renderDevice,
                 /* Quality = */ 0,
             },
             /* Layout = */ D3D12_TEXTURE_LAYOUT_UNKNOWN,
-            /* Flags  = */ flags,
+            /* Flags  = */ D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL,
         };
 
         D3D12_CLEAR_VALUE clearValue;
@@ -567,19 +562,6 @@ ink::DepthBuffer::DepthBuffer(RenderDevice &renderDevice,
         }
 
         m_shaderResourceView.update(m_resource.Get(), &desc);
-    }
-
-    // Create unordered access view.
-    if (supportUAV) {
-        m_unorderedAccessView = renderDevice.newUnorderedAccessView();
-
-        D3D12_UNORDERED_ACCESS_VIEW_DESC desc;
-        desc.Format               = depthFormat;
-        desc.ViewDimension        = D3D12_UAV_DIMENSION_TEXTURE2D;
-        desc.Texture2D.MipSlice   = 0;
-        desc.Texture2D.PlaneSlice = 0;
-
-        m_unorderedAccessView.update(m_resource.Get(), nullptr, &desc);
     }
 }
 

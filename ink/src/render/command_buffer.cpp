@@ -151,7 +151,7 @@ auto ink::DynamicBufferAllocator::allocate(std::size_t size, std::size_t alignme
     // Align up offset.
     std::size_t extraSize = 0;
     if (m_page != nullptr) {
-        extraSize = ((m_offset + alignment - 1) & (alignment - 1)) - m_offset;
+        extraSize = ((m_offset + alignment - 1) & ~(alignment - 1)) - m_offset;
         if (m_offset + size + extraSize > DYNAMIC_BUFFER_PAGE_SIZE) {
             m_retiredPages.push_back(m_page);
             m_page = nullptr;
@@ -636,8 +636,8 @@ auto ink::CommandBuffer::copyTexture(const void   *src,
                                      PixelBuffer  &dst,
                                      std::uint32_t subresource) -> void {
     // Align up row pitch.
-    const std::uint32_t rowPitch  = (std::uint32_t(srcRowPitch) + 0xFF) & ~std::uint32_t(0xFF);
-    const std::size_t   allocSize = (std::size_t(height) * rowPitch + 511) & ~std::size_t(511);
+    const std::uint32_t rowPitch  = (std::uint32_t(srcRowPitch) + 0x1FF) & ~std::uint32_t(0x1FF);
+    const std::size_t   allocSize = (std::size_t(height) * rowPitch + 0x1FF) & ~std::size_t(0x1FF);
 
     DynamicBufferAllocation allocation(m_bufferAllocator.allocate(allocSize, 512U));
 
