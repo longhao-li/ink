@@ -10,10 +10,11 @@ target_compile_definitions(HelloTexture PRIVATE "WIN32_LEAN_AND_MEAN" "NOMINMAX"
 include("FindD3D12")
 find_package(D3D12 REQUIRED)
 
-set(HELLO_TEXTURE_GENERATED_INCLUDE_DIR "$<TARGET_FILE_DIR:HelloTexture>/_generated/include")
+set(HELLO_TEXTURE_GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/_generated/include")
 
-add_custom_command(
-    TARGET HelloTexture PRE_BUILD
+add_custom_target(
+    HelloTextureShaders ALL
+    DEPENDS "texture.hlsl"
     COMMAND ${CMAKE_COMMAND} -E make_directory ${HELLO_TEXTURE_GENERATED_INCLUDE_DIR}
     COMMAND ${D3D12_DXC} -E "vertex_main" -T "vs_6_0" -Ges -Fh "${HELLO_TEXTURE_GENERATED_INCLUDE_DIR}/texture.vs.hlsl.hpp" "texture.hlsl"
     COMMAND ${D3D12_DXC} -E "pixel_main" -T "ps_6_0" -Ges -Fh "${HELLO_TEXTURE_GENERATED_INCLUDE_DIR}/texture.ps.hlsl.hpp" "texture.hlsl"
@@ -22,12 +23,13 @@ add_custom_command(
     VERBATIM
 )
 
+add_dependencies(HelloTexture HelloTextureShaders)
+target_include_directories(HelloTexture PRIVATE "${HELLO_TEXTURE_GENERATED_INCLUDE_DIR}")
+
 add_custom_command(
     TARGET HelloTexture POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory "asset" "$<TARGET_FILE_DIR:HelloTexture>/asset"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "asset" "${CMAKE_CURRENT_BINARY_DIR}/asset"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     COMMENT "Copying HelloTexture assets."
     VERBATIM
 )
-
-target_include_directories(HelloTexture PRIVATE "${HELLO_TEXTURE_GENERATED_INCLUDE_DIR}")

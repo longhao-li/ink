@@ -388,6 +388,10 @@ auto ink::RenderDevice::newRootSignature(const D3D12_ROOT_SIGNATURE_DESC &desc) 
     return {m_device.Get(), desc};
 }
 
+auto ink::RenderDevice::newRootSignature(const void *data, std::size_t size) -> RootSignature {
+    return {m_device.Get(), data, size};
+}
+
 auto ink::RenderDevice::newGraphicsPipeline(RootSignature                 &rootSignature,
                                             D3D12_SHADER_BYTECODE          vertexShader,
                                             D3D12_SHADER_BYTECODE          pixelShader,
