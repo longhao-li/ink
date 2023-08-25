@@ -29,9 +29,55 @@ ink::RootSignature::RootSignature(ID3D12Device5 *device, const D3D12_ROOT_SIGNAT
     hr = device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
                                      IID_PPV_ARGS(m_rootSignature.GetAddressOf()));
     if (FAILED(hr))
-        throw RenderAPIException(hr, "Failed to create D3D12 root signature.");
+        throw RenderAPIException(hr, "Failed to create root signature.");
 
     // Cache root signature metadata.
+    for (std::uint32_t i = 0; i < desc.NumParameters; ++i) {
+        const auto &param = desc.pParameters[i];
+        if (param.ParameterType == D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE) {
+            const auto &table      = param.DescriptorTable;
+            const auto *rangeBegin = table.pDescriptorRanges;
+            const auto *rangeEnd   = rangeBegin + table.NumDescriptorRanges;
+
+            for (auto j = rangeBegin; j != rangeEnd; ++j)
+                m_tableSizes[i] += static_cast<std::uint16_t>(j->NumDescriptors);
+
+            if (rangeBegin->RangeType == D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER) {
+                m_samplerTableFlags[i] = true;
+                m_tableSamplerCount += m_tableSizes[i];
+            } else {
+                m_viewTableFlags[i] = true;
+                m_tableViewDescriptorCount += m_tableSizes[i];
+            }
+        }
+    }
+}
+
+ink::RootSignature::RootSignature(ID3D12Device5 *device, const void *data, std::size_t size)
+    : m_rootSignature(),
+      m_staticSamplerCount(),
+      m_tableViewDescriptorCount(),
+      m_tableSamplerCount(),
+      m_viewTableFlags(),
+      m_samplerTableFlags(),
+      m_tableSizes() {
+    // Create deserializer.
+    ComPtr<ID3D12RootSignatureDeserializer> deserializer;
+
+    HRESULT hr =
+        D3D12CreateRootSignatureDeserializer(data, size, IID_PPV_ARGS(deserializer.GetAddressOf()));
+    if (FAILED(hr))
+        throw RenderAPIException(hr, "Failed to retrieve root signature metadata.");
+
+    // Create root signature.
+    hr = device->CreateRootSignature(0, data, size, IID_PPV_ARGS(m_rootSignature.GetAddressOf()));
+    if (FAILED(hr))
+        throw RenderAPIException(hr, "Failed to create root signature.");
+
+    // Cache root signature metadata.
+    auto &desc           = *deserializer->GetRootSignatureDesc();
+    m_staticSamplerCount = desc.NumStaticSamplers;
+
     for (std::uint32_t i = 0; i < desc.NumParameters; ++i) {
         const auto &param = desc.pParameters[i];
         if (param.ParameterType == D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE) {

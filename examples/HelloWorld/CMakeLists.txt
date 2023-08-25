@@ -10,10 +10,11 @@ target_compile_definitions(HelloWorld PRIVATE "WIN32_LEAN_AND_MEAN" "NOMINMAX")
 include("FindD3D12")
 find_package(D3D12 REQUIRED)
 
-set(HELLO_WORLD_GENERATED_INCLUDE_DIR "$<TARGET_FILE_DIR:HelloWorld>/_generated/include")
+set(HELLO_WORLD_GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/_generated/include")
 
-add_custom_command(
-    TARGET HelloWorld PRE_BUILD
+add_custom_target(
+    HelloWorldShaders ALL
+    DEPENDS "triangle.hlsl"
     COMMAND ${CMAKE_COMMAND} -E make_directory ${HELLO_WORLD_GENERATED_INCLUDE_DIR}
     COMMAND ${D3D12_DXC} -E "vertex_main" -T "vs_6_0" -Ges -Fh "${HELLO_WORLD_GENERATED_INCLUDE_DIR}/triangle.vs.hlsl.hpp" "triangle.hlsl"
     COMMAND ${D3D12_DXC} -E "pixel_main" -T "ps_6_0" -Ges -Fh "${HELLO_WORLD_GENERATED_INCLUDE_DIR}/triangle.ps.hlsl.hpp" "triangle.hlsl"
@@ -22,4 +23,5 @@ add_custom_command(
     VERBATIM
 )
 
+add_dependencies(HelloWorld HelloWorldShaders)
 target_include_directories(HelloWorld PRIVATE "${HELLO_WORLD_GENERATED_INCLUDE_DIR}")

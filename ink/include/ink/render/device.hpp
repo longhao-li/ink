@@ -440,6 +440,23 @@ public:
         -> RootSignature;
 
     /// @brief
+    ///   Create a new root signature with serialized data. D3D12 root signature may be created
+    ///   offline using dxc or fxc.
+    ///
+    /// @param data
+    ///   Pointer to the serialized root signature data.
+    /// @param size
+    ///   Size in byte of the serialized root signature data.
+    ///
+    /// @return
+    ///   The new root signature.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to create the new root signature.
+    [[nodiscard]] InkExport auto newRootSignature(const void *data, std::size_t size)
+        -> RootSignature;
+
+    /// @brief
     ///   Create a new graphics pipeline state with blending disabled.
     ///
     /// @param rootSignature

@@ -25,6 +25,20 @@ private:
     ///   Thrown if failed to create the root signature.
     RootSignature(ID3D12Device5 *device, const D3D12_ROOT_SIGNATURE_DESC &desc);
 
+    /// @brief
+    ///   Create a new root signature from serialized data.
+    ///
+    /// @param device
+    ///   The D3D12 device that is used to create this root signature.
+    /// @param data
+    ///   Pointer to start of the serialized root signature.
+    /// @param size
+    ///   Size in byte of the serialized root signature data.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to create the root signature.
+    RootSignature(ID3D12Device5 *device, const void *data, std::size_t size);
+
     friend class RenderDevice;
 
 public:
