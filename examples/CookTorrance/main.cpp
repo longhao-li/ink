@@ -2,9 +2,8 @@
 #include "ink/core/window.hpp"
 #include "ink/math/numbers.hpp"
 #include "ink/math/quaternion.hpp"
+#include "ink/model.hpp"
 #include "ink/render/device.hpp"
-
-#include <tiny_gltf.h>
 
 // Generated headers.
 #include "cook_torrance.ps.hlsl.hpp"
@@ -152,177 +151,6 @@ struct Vertex {
     Vector3 normal;
 };
 
-class Mesh;
-
-struct SubMesh {
-    std::size_t   m_positionBufferID;
-    std::uint64_t m_positionBufferOffset;
-    std::uint32_t m_positionCount;
-    std::uint32_t m_positionStride;
-    std::size_t   m_normalBufferID;
-    std::uint64_t m_normalBufferOffset;
-    std::uint32_t m_normalCount;
-    std::uint32_t m_normalStride;
-    std::size_t   m_indexBufferID;
-    std::uint64_t m_indexBufferOffset;
-    std::uint32_t m_indexCount;
-    std::uint32_t m_indexStride;
-    Matrix4       m_modelMatrix;
-};
-
-struct Mesh {
-    Mesh(RenderDevice &renderDevice, std::string_view path);
-
-    std::vector<GpuBuffer> m_gpuBuffers;
-    std::vector<SubMesh>   m_nodes;
-};
-
-Mesh::Mesh(RenderDevice &renderDevice, std::string_view path) : m_gpuBuffers(), m_nodes() {
-    tinygltf::Model    gltfModel;
-    tinygltf::TinyGLTF gltfContext;
-    gltfContext.SetImageLoader(
-        +[](tinygltf::Image *, const int, std::string *, std::string *, int, int,
-            const unsigned char *, int, void *) -> bool { return true; },
-        nullptr);
-
-    { // Load glTF file.
-        std::string error;
-
-        bool fileLoaded =
-            gltfContext.LoadASCIIFromFile(&gltfModel, &error, nullptr, "asset/sphere.gltf");
-        if (!fileLoaded)
-            throw Exception("Failed to load glTF file: " + error);
-    }
-
-    // Upload buffers.
-    CommandBuffer cmdBuffer = renderDevice.newCommandBuffer();
-    for (const auto &buffer : gltfModel.buffers) {
-        GpuBuffer newBuffer = renderDevice.newGpuBuffer(buffer.data.size());
-        cmdBuffer.copyBuffer(buffer.data.data(), newBuffer, 0, buffer.data.size());
-        cmdBuffer.transition(newBuffer, D3D12_RESOURCE_STATE_GENERIC_READ);
-        m_gpuBuffers.push_back(std::move(newBuffer));
-    }
-    cmdBuffer.submit();
-    cmdBuffer.waitForComplete();
-
-    // Load scene.
-    const tinygltf::Scene &scene =
-        gltfModel.scenes[gltfModel.defaultScene > -1 ? gltfModel.defaultScene : 0];
-
-    // BFS.
-    std::queue<std::pair<Matrix4, int>> nodes;
-    for (auto i : scene.nodes)
-        nodes.emplace(Matrix4{1.0f}, i);
-
-    while (!nodes.empty()) {
-        auto [transform, nodeIndex] = nodes.front();
-        nodes.pop();
-
-        const tinygltf::Node node = gltfModel.nodes[nodeIndex];
-
-        Vector3    translation{};
-        Vector3    scale{1.0f};
-        Quaternion rotation{1.0f};
-
-        if (node.translation.size() == 3)
-            translation = Vector3{
-                static_cast<float>(node.translation[0]),
-                static_cast<float>(node.translation[1]),
-                static_cast<float>(node.translation[2]),
-            };
-
-        if (node.rotation.size() == 4)
-            rotation = Quaternion{
-                static_cast<float>(node.rotation[0]),
-                static_cast<float>(node.rotation[1]),
-                static_cast<float>(node.rotation[2]),
-                static_cast<float>(node.rotation[3]),
-            };
-
-        if (node.scale.size() == 3)
-            scale = Vector3{
-                static_cast<float>(node.scale[0]),
-                static_cast<float>(node.scale[1]),
-                static_cast<float>(node.scale[2]),
-            };
-
-        transform =
-            Matrix4(1.0f).scaled(scale).rotated(rotation).translated(translation) * transform;
-
-        // Add children.
-        for (auto i : node.children)
-            nodes.emplace(transform, i);
-
-        // This node does not have mesh.
-        if (node.mesh < 0)
-            continue;
-
-        const tinygltf::Mesh mesh = gltfModel.meshes[node.mesh];
-        for (const auto &primitive : mesh.primitives) {
-            if (primitive.indices < 0)
-                continue;
-
-            SubMesh submesh{};
-            submesh.m_modelMatrix = transform;
-
-            auto &attributes = primitive.attributes;
-
-            { // Get vertices.
-                assert(attributes.find("POSITION") != attributes.end());
-
-                auto        attr       = attributes.find("POSITION");
-                const auto &accessor   = gltfModel.accessors[attr->second];
-                const auto &bufferView = gltfModel.bufferViews[accessor.bufferView];
-
-                submesh.m_positionBufferID     = static_cast<std::size_t>(bufferView.buffer);
-                submesh.m_positionBufferOffset = accessor.byteOffset + bufferView.byteOffset;
-                submesh.m_positionCount        = static_cast<std::uint32_t>(accessor.count);
-                submesh.m_positionStride =
-                    static_cast<std::uint32_t>(accessor.ByteStride(bufferView));
-            }
-
-            { // Get normals.
-                assert(attributes.find("NORMAL") != attributes.end());
-
-                auto        attr       = attributes.find("NORMAL");
-                const auto &accessor   = gltfModel.accessors[attr->second];
-                const auto &bufferView = gltfModel.bufferViews[accessor.bufferView];
-
-                submesh.m_normalBufferID     = static_cast<std::size_t>(bufferView.buffer);
-                submesh.m_normalBufferOffset = accessor.byteOffset + bufferView.byteOffset;
-                submesh.m_normalCount        = static_cast<std::uint32_t>(accessor.count);
-                submesh.m_normalStride =
-                    static_cast<std::uint32_t>(accessor.ByteStride(bufferView));
-            }
-
-            { // Get indices.
-                const auto &accessor   = gltfModel.accessors[primitive.indices];
-                const auto &bufferView = gltfModel.bufferViews[accessor.bufferView];
-                const auto &buffer     = gltfModel.buffers[bufferView.buffer];
-
-                submesh.m_indexBufferID     = static_cast<std::size_t>(bufferView.buffer);
-                submesh.m_indexCount        = static_cast<std::uint32_t>(accessor.count);
-                submesh.m_indexBufferOffset = accessor.byteOffset + bufferView.byteOffset;
-
-                switch (accessor.componentType) {
-                case TINYGLTF_PARAMETER_TYPE_UNSIGNED_INT:
-                    submesh.m_indexStride = sizeof(std::uint32_t);
-                    break;
-
-                case TINYGLTF_PARAMETER_TYPE_UNSIGNED_SHORT:
-                    submesh.m_indexStride = sizeof(std::uint16_t);
-                    break;
-
-                default:
-                    throw Exception("Unsupported index type.");
-                }
-            }
-
-            m_nodes.push_back(submesh);
-        }
-    }
-}
-
 class Application {
 public:
     Application();
@@ -342,7 +170,7 @@ private:
     Camera m_camera;
 
     std::vector<Material> m_materials;
-    Mesh                  m_mesh;
+    Model                 m_model;
 };
 
 constexpr const D3D12_INPUT_ELEMENT_DESC INPUT_ELEMENTS[]{
@@ -376,7 +204,7 @@ Application::Application()
       m_pipelineState(),
       m_camera(Pi<float> / 3.0f, 1280.0f / 720.0f),
       m_materials(),
-      m_mesh(m_renderDevice, "asset/sphere.gltf") {
+      m_model(m_renderDevice, "asset/sphere.gltf", false) {
     m_window.setFrameResizeCallback([this](Window &, std::uint32_t width, std::uint32_t height) {
         if ((width * height) == 0)
             return;
@@ -541,20 +369,12 @@ auto Application::update(float deltaTime) -> void {
         },
     };
 
-    for (auto &submesh : m_mesh.m_nodes) {
+    m_model.render([this, &renderPass, &lights](const Mesh &mesh, const Matrix4 &modelTransform) {
         m_commandBuffer.beginRenderPass(renderPass);
-        m_commandBuffer.setVertexBuffer(
-            0,
-            m_mesh.m_gpuBuffers[submesh.m_positionBufferID].gpuAddress() +
-                submesh.m_positionBufferOffset,
-            submesh.m_positionCount, submesh.m_positionStride);
-        m_commandBuffer.setVertexBuffer(1,
-                                        m_mesh.m_gpuBuffers[submesh.m_normalBufferID].gpuAddress() +
-                                            submesh.m_normalBufferOffset,
-                                        submesh.m_normalCount, submesh.m_normalStride);
-        m_commandBuffer.setIndexBuffer(m_mesh.m_gpuBuffers[submesh.m_indexBufferID].gpuAddress() +
-                                           submesh.m_indexBufferOffset,
-                                       submesh.m_indexCount, submesh.m_indexStride);
+        m_commandBuffer.setVertexBuffer(0, mesh.positionBuffer, mesh.positionCount,
+                                        mesh.positionStride);
+        m_commandBuffer.setVertexBuffer(1, mesh.normalBuffer, mesh.normalCount, mesh.normalStride);
+        m_commandBuffer.setIndexBuffer(mesh.indexBuffer, mesh.indexCount, mesh.indexStride);
 
         // Set object position.
         m_commandBuffer.setGraphicsConstant(0, 0, 0.0f);
@@ -562,7 +382,7 @@ auto Application::update(float deltaTime) -> void {
         m_commandBuffer.setGraphicsConstant(0, 2, 0.0f);
 
         Transform transform{
-            /* model      = */ submesh.m_modelMatrix,
+            /* model      = */ modelTransform,
             /* view       = */ m_camera.view(),
             /* projection = */ m_camera.projection(),
             /* cameraPos  = */ m_camera.position(),
@@ -576,11 +396,9 @@ auto Application::update(float deltaTime) -> void {
         m_commandBuffer.setViewport(0, 0, width, height);
         m_commandBuffer.setScissorRect(0, 0, width, height);
 
-        m_commandBuffer.drawIndexed(submesh.m_indexCount, 0);
+        m_commandBuffer.drawIndexed(mesh.indexCount, 0);
         m_commandBuffer.endRenderPass();
-
-        renderPass.depthTarget.depthLoadAction = LoadAction::Load;
-    }
+    });
 
     m_commandBuffer.submit();
     m_swapChain.present();

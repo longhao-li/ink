@@ -113,7 +113,7 @@ ink::Model::Model(RenderDevice &renderDevice, std::string_view path, bool isBina
 
     { // Load nodes via BFS.
         const auto &scene = gltfModel.scenes[gltfModel.defaultScene];
-        std::queue<std::pair<tinygltf::Node *, Node *>> nodeQueue;
+        std::queue<std::pair<const tinygltf::Node *, Node *>> nodeQueue;
 
         auto convertNode = [this, &gltfModel](const tinygltf::Node &gltfNode) -> Node {
             Node node{
