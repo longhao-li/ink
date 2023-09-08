@@ -19,6 +19,7 @@ CPMAddPackage(
             "TINYGLTF_INSTALL OFF"
 )
 
+add_subdirectory("Common")
 add_subdirectory("HelloWorld")
 add_subdirectory("HelloTexture")
 add_subdirectory("CookTorrance")
