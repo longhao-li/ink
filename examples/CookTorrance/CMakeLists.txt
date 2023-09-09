@@ -3,7 +3,7 @@ file(GLOB_RECURSE COOK_TORRANCE_SOURCES "*.cpp")
 
 add_executable(CookTorrance ${COOK_TORRANCE_HEADERS} ${COOK_TORRANCE_SOURCES})
 
-target_link_libraries(CookTorrance PRIVATE ink::ink tinygltf)
+target_link_libraries(CookTorrance PRIVATE ink_example_common)
 target_compile_definitions(CookTorrance PRIVATE "WIN32_LEAN_AND_MEAN" "NOMINMAX")
 
 # Compile HLSL.
