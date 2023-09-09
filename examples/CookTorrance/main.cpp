@@ -1,3 +1,4 @@
+#include "ink/camera.hpp"
 #include "ink/core/exception.hpp"
 #include "ink/core/window.hpp"
 #include "ink/math/numbers.hpp"
@@ -31,119 +32,6 @@ struct Light {
 struct Material {
     float   roughness;
     Vector3 F0;
-};
-
-class Camera {
-public:
-    Camera(float fov, float aspectRatio, float zNear = 0.1f, float zFar = 1000.0f) noexcept
-        : m_isViewDirty(true),
-          m_isProjectionDirty(true),
-          m_position(),
-          m_rotation(),
-          m_fovY(fov),
-          m_aspectRatio(aspectRatio),
-          m_zNear(zNear),
-          m_zFar(zFar),
-          m_view(),
-          m_projection() {}
-
-    [[nodiscard]] auto position() const noexcept -> Vector3 { return m_position; }
-
-    auto setPosition(Vector3 position) noexcept -> void {
-        m_position    = position;
-        m_isViewDirty = true;
-    }
-
-    [[nodiscard]] auto rotation() const noexcept -> Quaternion {
-        return {m_rotation.x, m_rotation.y, m_rotation.z};
-    }
-
-    auto rotate(float pitch, float yaw, float roll) noexcept -> void {
-        m_rotation.x += pitch;
-        m_rotation.y += yaw;
-        m_rotation.z += roll;
-        m_rotation.x  = std::fmodf(m_rotation.x, Pi<float> * 2.0f);
-        m_rotation.y  = std::fmodf(m_rotation.y, Pi<float> * 2.0f);
-        m_rotation.z  = std::fmodf(m_rotation.z, Pi<float> * 2.0f);
-        m_isViewDirty = true;
-    }
-
-    [[nodiscard]] auto fieldOfView() const noexcept -> float { return m_fovY; }
-
-    auto setFieldOfView(float fov) noexcept -> void {
-        m_fovY              = fov;
-        m_isProjectionDirty = true;
-    }
-
-    [[nodiscard]] auto aspectRatio() const noexcept -> float { return m_aspectRatio; }
-
-    auto setAspectRatio(float aspectRatio) noexcept -> void {
-        m_aspectRatio       = aspectRatio;
-        m_isProjectionDirty = true;
-    }
-
-    [[nodiscard]] auto zNear() const noexcept -> float { return m_zNear; }
-
-    auto setZNear(float zNear) noexcept -> void {
-        m_zNear             = zNear;
-        m_isProjectionDirty = true;
-    }
-
-    [[nodiscard]] auto zFar() const noexcept -> float { return m_zFar; }
-
-    auto setZFar(float zFar) noexcept -> void {
-        m_zFar              = zFar;
-        m_isProjectionDirty = true;
-    }
-
-    [[nodiscard]] auto front() const noexcept -> Vector3 {
-        Quaternion quat{m_rotation.x, m_rotation.y, m_rotation.z};
-        Quaternion forward{0.0f, 0.0f, 0.0f, 1.0f};
-        forward = quat * forward * quat.conjugated();
-        return {forward.x, forward.y, forward.z};
-    }
-
-    auto move(float x, float y, float z) noexcept -> void {
-        Vector3 front = this->front();
-        Vector3 right = cross({0.0f, 1.0f, 0.0f}, front).normalized();
-        Vector3 up    = cross(front, right).normalized();
-
-        m_position += right * x;
-        m_position += up * y;
-        m_position += front * z;
-        m_isViewDirty = true;
-    }
-
-    [[nodiscard]] auto view() const noexcept -> const Matrix4 & {
-        if (m_isViewDirty) {
-            m_view        = lookTo(m_position, front(), {0.0f, 1.0f, 0.0f});
-            m_isViewDirty = false;
-        }
-        return m_view;
-    }
-
-    [[nodiscard]] auto projection() const noexcept -> const Matrix4 & {
-        if (m_isProjectionDirty) {
-            m_projection        = perspective(m_fovY, m_aspectRatio, m_zNear, m_zFar);
-            m_isProjectionDirty = false;
-        }
-        return m_projection;
-    }
-
-private:
-    mutable bool m_isViewDirty;
-    mutable bool m_isProjectionDirty;
-
-    Vector3 m_position;
-    Vector3 m_rotation;
-
-    float m_fovY;
-    float m_aspectRatio;
-    float m_zNear;
-    float m_zFar;
-
-    mutable Matrix4 m_view;
-    mutable Matrix4 m_projection;
 };
 
 struct Vertex {
@@ -202,7 +90,7 @@ Application::Application()
       m_commandBuffer(m_renderDevice.newCommandBuffer()),
       m_rootSignature(m_renderDevice.newRootSignature(g_rootsig, sizeof(g_rootsig))),
       m_pipelineState(),
-      m_camera(Pi<float> / 3.0f, 1280.0f / 720.0f),
+      m_camera({}, Pi<float> / 3.0f, 1280.0f / 720.0f),
       m_materials(),
       m_model(m_renderDevice, "asset/sphere.gltf", false) {
     m_window.setFrameResizeCallback([this](Window &, std::uint32_t width, std::uint32_t height) {
@@ -313,13 +201,13 @@ auto Application::run() -> void {
 
 auto Application::update(float deltaTime) -> void {
     if (isKeyPressed(KeyCode::W))
-        m_camera.move(0, 0, deltaTime);
+        m_camera.translate({0, 0, deltaTime});
     if (isKeyPressed(KeyCode::A))
-        m_camera.move(-deltaTime, 0, 0);
+        m_camera.translate({-deltaTime, 0, 0});
     if (isKeyPressed(KeyCode::S))
-        m_camera.move(0, 0, -deltaTime);
+        m_camera.translate({0, 0, -deltaTime});
     if (isKeyPressed(KeyCode::D))
-        m_camera.move(deltaTime, 0, 0);
+        m_camera.translate({deltaTime, 0, 0});
 
     auto &backBuffer = m_swapChain.backBuffer();
 
@@ -383,8 +271,8 @@ auto Application::update(float deltaTime) -> void {
 
         Transform transform{
             /* model      = */ modelTransform,
-            /* view       = */ m_camera.view(),
-            /* projection = */ m_camera.projection(),
+            /* view       = */ m_camera.viewMatrix(),
+            /* projection = */ m_camera.projectionMatrix(),
             /* cameraPos  = */ m_camera.position(),
         };
 

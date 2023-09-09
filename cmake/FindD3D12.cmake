@@ -82,6 +82,7 @@ if("$ENV{WIN10_SDK_VERSION}" STREQUAL "")
         # Find Windows10 SDK
         set(
             WIN10_SDK_VERSION_LIST
+            10.0.22621
             10.0.22000
             10.0.20348
             10.0.19041

@@ -23,15 +23,15 @@ public:
     [[nodiscard]] auto nearClip() const noexcept -> float { return m_zNear; }
     [[nodiscard]] auto farClip() const noexcept -> float { return m_zFar; }
 
-    [[nodiscard]] auto forward() const noexcept -> Vector3 {
-        Quaternion dir{0.0f, 0.0f, 1.0f, 0.0f};
+    [[nodiscard]] auto front() const noexcept -> Vector3 {
+        Quaternion dir{0.0f, 0.0f, 0.0f, 1.0f};
         dir = m_rotation * dir * m_rotation.conjugated();
         return {dir.x, dir.y, dir.z};
     }
 
     [[nodiscard]] auto viewMatrix() const noexcept -> const Matrix4 & {
         if (m_isViewMatrixDirty) {
-            m_viewMatrix        = lookTo(m_position, forward(), {0.0f, 1.0f, 0.0f});
+            m_viewMatrix        = lookTo(m_position, front(), {0.0f, 1.0f, 0.0f});
             m_isViewMatrixDirty = false;
         }
         return m_viewMatrix;
@@ -53,6 +53,16 @@ public:
     auto translate(Vector3 offset) noexcept -> void {
         m_position += offset;
         m_isViewMatrixDirty = true;
+    }
+
+    auto setPosition(Vector3 pos) noexcept -> void {
+        m_position          = pos;
+        m_isViewMatrixDirty = true;
+    }
+
+    auto setAspectRatio(float aspect) noexcept -> void {
+        m_aspectRatio             = aspect;
+        m_isProjectionMatrixDirty = true;
     }
 
 private:
