@@ -18,6 +18,12 @@ enum class AlphaMode {
     Blend,
 };
 
+enum class LightType {
+    Directional,
+    Point,
+    Spot,
+};
+
 struct Material {
     AlphaMode  alphaMode;
     float      alphaCutoff;
@@ -34,33 +40,56 @@ struct Material {
 
 struct Mesh {
     // Index data.
-    std::uint64_t indexBuffer; // Index buffer GPU address.
-    std::uint32_t indexCount;  // Number of indices.
-    std::uint32_t indexStride; // Size of each index. Must be 2 or 4.
+    struct {
+        std::uint64_t buffer; // Index buffer GPU address.
+        std::uint32_t count;  // Number of indices.
+        std::uint32_t stride; // Size of each index. Must be 2 or 4.
+    } index;
 
     // Vertex data.
-    std::uint64_t positionBuffer; // Position buffer GPU address.
-    std::uint32_t positionCount;  // Number of positions.
-    std::uint32_t positionStride; // Position buffer stride.
-    std::uint64_t normalBuffer;   // Normal buffer GPU address.
-    std::uint32_t normalCount;    // Number of normals. Must be 0 or equal to positionCount.
-    std::uint32_t normalStride;   // Normal buffer stride.
-    std::uint64_t texCoordBuffer; // Texture coordinate buffer GPU address.
-    std::uint32_t texCoordCount;  // Number of texture coordinates.
-    std::uint32_t texCoordStride; // Texture coordinate buffer stride.
-    std::uint64_t tangentBuffer;  // Tangent buffer GPU address.
-    std::uint32_t tangentCount;   // Number of tangents.
-    std::uint32_t tangentStride;  // Tangent buffer stride.
-    std::uint64_t colorBuffer;    // Color buffer GPU address.
-    std::uint32_t colorCount;     // Number of colors.
-    std::uint32_t colorStride;    // Color buffer stride.
-    std::uint64_t jointBuffer;    // Joint buffer GPU address.
-    std::uint32_t jointCount;     // Number of joints.
-    std::uint32_t jointStride;    // Joint buffer stride.
-    std::uint64_t weightBuffer;   // Weight buffer GPU address.
-    std::uint32_t weightCount;    // Number of weights.
-    std::uint32_t weightStride;   // Weight buffer stride.
-    Material     *material;       // Material of this mesh.
+    struct {
+        std::uint64_t buffer; // Position buffer GPU address.
+        std::uint32_t count;  // Number of positions.
+        std::uint32_t stride; // Position buffer stride.
+    } position;
+
+    struct {
+        std::uint64_t buffer; // Normal buffer GPU address.
+        std::uint32_t count;  // Number of normals.
+        std::uint32_t stride; // Normal buffer stride.
+    } normal;
+
+    struct {
+        std::uint64_t buffer; // Tangent buffer GPU address.
+        std::uint32_t count;  // Number of tangents.
+        std::uint32_t stride; // Tangent buffer stride.
+    } tangent;
+
+    struct {
+        std::uint64_t buffer; // Texture coordinate buffer GPU address.
+        std::uint32_t count;  // Number of texture coordinates.
+        std::uint32_t stride; // Texture coordinate buffer stride.
+    } texCoord[16];
+
+    struct {
+        std::uint64_t buffer; // Color buffer GPU address.
+        std::uint32_t count;  // Number of colors.
+        std::uint32_t stride; // Color buffer stride.
+    } color[16];
+
+    struct {
+        std::uint64_t buffer; // Joint buffer GPU address.
+        std::uint32_t count;  // Number of joints.
+        std::uint32_t stride; // Joint buffer stride.
+    } joint[16];
+
+    struct {
+        std::uint64_t buffer; // Weight buffer GPU address.
+        std::uint32_t count;  // Number of weights.
+        std::uint32_t stride; // Weight buffer stride.
+    } weight[16];
+
+    Material *material; // Material of this mesh.
 };
 
 class Model {

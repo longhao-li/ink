@@ -1,40 +1,37 @@
-///
-/// Vertex shader.
-///
-
-#define rootsig "RootFlags(ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT)," \
-                "RootConstants(num32BitConstants = 3, b0)," \
-                "DescriptorTable(CBV(b1, numDescriptors = 3))"
-
-cbuffer ObjectPos : register(b0) {
-    float3 objectPos;
-}
+#define rootsig "RootFlags(ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),"    \
+                "DescriptorTable(CBV(b0, numDescriptors = 3),"      \
+                "                SRV(t0, numDescriptors = 4)),"     \
+                "DescriptorTable(Sampler(s0, numDescriptors = 1))"
 
 struct Transform {
     float4x4 model;
+    float4x4 modelInvTranspose;
     float4x4 view;
     float4x4 projection;
     float3   cameraPos;
 };
 
-ConstantBuffer<Transform> transform : register(b1);
+ConstantBuffer<Transform> transform : register(b0);
 
 struct VertexOutput {
     float4 position : SV_POSITION;
     float3 worldPos : POSITION;
     float3 normal   : NORMAL;
+    float2 texCoord : TEXCOORD0;
 };
 
 [RootSignature(rootsig)]
-VertexOutput vertex_main(float3 position : POSITION,
-                         float3 normal   : NORMAL) {
+VertexOutput vertex_main(
+    float3 position : POSITION,
+    float3 normal   : NORMAL,
+    float2 texCoord : TEXCOORD0
+) {
     VertexOutput output;
-
-    float3 localPos = mul(float4(position, 1.0f), transform.model).xyz;
-    output.worldPos = localPos + objectPos;
-    output.normal   = mul(normal, (float3x3)transform.model);
-    output.position = mul(float4(localPos, 1.0f), mul(transform.view, transform.projection));
-
+    float3 worldPos = mul(float4(position, 1.0f), transform.model).xyz;
+    output.worldPos = worldPos;
+    output.normal   = mul(float4(normal, 0.0f), transform.modelInvTranspose).xyz;
+    output.texCoord = texCoord;
+    output.position = mul(mul(float4(worldPos, 1.0f), transform.view), transform.projection);
     return output;
 }
 
@@ -135,34 +132,46 @@ float3 CookTorrance(float roughness, float3 F0, float3 normal, float3 view, floa
     }
 }
 
-struct Light {
-    float3 position;
-    float3 color;
-};
-
-cbuffer light : register(b2) {
-    Light lights[4];
-}
-
 struct Material {
-    float  roughness;
-    float3 F0;
+    float3 emissive;
+    float4 baseColor;
 };
 
-ConstantBuffer<Material> material : register(b3);
+ConstantBuffer<Material> material : register(b1);
+
+struct Lights {
+    uint   numLights;
+    float4 lightPositions[16];
+    float4 lightColors[16];
+};
+
+ConstantBuffer<Lights> lights : register(b2);
+
+Texture2D baseColorMap         : register(t0);
+Texture2D metallicRoughnessMap : register(t1);
+Texture2D normalMap            : register(t2);
+Texture2D emissiveMap          : register(t3);
+
+SamplerState linearSampler : register(s0);
 
 [RootSignature(rootsig)]
 float4 pixel_main(VertexOutput input) : SV_TARGET {
-    float3 normal    = normalize(input.normal);
-    float3 viewDir   = normalize(transform.cameraPos - input.worldPos);
-    float  roughness = material.roughness;
-    float3 F0        = material.F0;
+    float3 baseColor = material.baseColor.rgb * baseColorMap.Sample(linearSampler, input.texCoord).rgb;
+    float2 metallicRoughness = metallicRoughnessMap.Sample(linearSampler, input.texCoord).rg;
+    float3 normal = input.normal;
+    float3 emissive = material.emissive * emissiveMap.Sample(linearSampler, input.texCoord).xyz;
+
+    float3 viewDir = normalize(transform.cameraPos - input.worldPos);
+    float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), baseColor.rgb, metallicRoughness.r);
 
     float3 color = float3(0.0f, 0.0f, 0.0f);
 
-    [unroll]
-    for (int i = 0; i < 4; ++i)
-        color += CookTorrance(roughness, F0, normal, viewDir, lights[i].position - input.worldPos) * lights[i].color;
+    for (uint i = 0; i < lights.numLights; ++i) {
+        float3 lightDir = normalize(lights.lightPositions[i].xyz - input.worldPos);
+        color += lights.lightColors[i].rgb * CookTorrance(metallicRoughness.g, F0, normal, viewDir, lightDir);
+    }
+
+    color += emissive;
 
     // Gamma correction
 	color = pow(color, float3(0.4545, 0.4545, 0.4545));

@@ -17,26 +17,21 @@ namespace {
 
 struct Transform {
     Matrix4 model;
+    Matrix4 modelInvTranspose;
     Matrix4 view;
     Matrix4 projection;
     Vector3 cameraPos;
 };
 
-struct Light {
-    Vector3                position;
-    [[maybe_unused]] float padding;
-    Vector3                color;
-    [[maybe_unused]] float padding1;
+struct Lights {
+    std::uint32_t numLights;
+    Vector4       lightPositions[16];
+    Vector4       lightColors[16];
 };
 
 struct Material {
-    float   roughness;
-    Vector3 F0;
-};
-
-struct Vertex {
-    Vector3 position;
-    Vector3 normal;
+    Vector3 emissive;
+    Vector4 baseColor;
 };
 
 class Application {
@@ -47,6 +42,9 @@ public:
     auto update(float deltaTime) -> void;
 
 private:
+    auto updateCamera(float deltaTime) -> void;
+
+private:
     RenderDevice          m_renderDevice;
     Window                m_window;
     SwapChain             m_swapChain;
@@ -55,10 +53,14 @@ private:
     RootSignature         m_rootSignature;
     GraphicsPipelineState m_pipelineState;
 
-    Camera m_camera;
+    Camera  m_camera;
+    Model   m_model;
+    Sampler m_linearSampler;
 
-    std::vector<Material> m_materials;
-    Model                 m_model;
+    std::int32_t m_cursorLastX;
+    std::int32_t m_cursorLastY;
+    std::int32_t m_cursorX;
+    std::int32_t m_cursorY;
 };
 
 constexpr const D3D12_INPUT_ELEMENT_DESC INPUT_ELEMENTS[]{
@@ -80,6 +82,15 @@ constexpr const D3D12_INPUT_ELEMENT_DESC INPUT_ELEMENTS[]{
         /* InputSlotClass       = */ D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
         /* InstanceDataStepRate = */ 0,
     },
+    D3D12_INPUT_ELEMENT_DESC{
+        /* SemanticName         = */ "TEXCOORD",
+        /* SemanticIndex        = */ 0,
+        /* Format               = */ DXGI_FORMAT_R32G32_FLOAT,
+        /* InputSlot            = */ 2,
+        /* AlignedByteOffset    = */ 0,
+        /* InputSlotClass       = */ D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+        /* InstanceDataStepRate = */ 0,
+    },
 };
 
 Application::Application()
@@ -90,9 +101,14 @@ Application::Application()
       m_commandBuffer(m_renderDevice.newCommandBuffer()),
       m_rootSignature(m_renderDevice.newRootSignature(g_rootsig, sizeof(g_rootsig))),
       m_pipelineState(),
-      m_camera({}, Pi<float> / 3.0f, 1280.0f / 720.0f),
-      m_materials(),
-      m_model(m_renderDevice, "asset/sphere.gltf", false) {
+      m_camera({0.0f, 0.0f, -4.0f}, Pi<float> / 3.0f, 1280.0f / 720.0f),
+      m_model(m_renderDevice, "asset/DamagedHelmet.glb", true),
+      m_linearSampler(m_renderDevice.newSampler(D3D12_FILTER_MIN_MAG_POINT_MIP_LINEAR,
+                                                D3D12_TEXTURE_ADDRESS_MODE_WRAP)),
+      m_cursorLastX(0),
+      m_cursorLastY(0),
+      m_cursorX(0),
+      m_cursorY(0) {
     m_window.setFrameResizeCallback([this](Window &, std::uint32_t width, std::uint32_t height) {
         if ((width * height) == 0)
             return;
@@ -100,6 +116,18 @@ Application::Application()
         m_swapChain.resize({width, height});
         m_depthBuffer = m_renderDevice.newDepthBuffer(width, height, DXGI_FORMAT_D32_FLOAT);
         m_camera.setAspectRatio(static_cast<float>(width) / static_cast<float>(height));
+    });
+
+    m_window.setKeyCallback([this](Window &window, KeyCode key, KeyAction action, Modifier) {
+        if (key == KeyCode::Escape && action == KeyAction::Press)
+            window.close();
+    });
+
+    m_window.setMousePositionCallback([this](Window &, std::int32_t x, std::int32_t y) -> void {
+        m_cursorLastX = m_cursorX;
+        m_cursorLastY = m_cursorY;
+        m_cursorX     = x;
+        m_cursorY     = y;
     });
 
     { // Create graphics pipeline state.
@@ -112,7 +140,7 @@ Application::Application()
         desc.InputLayout.pInputElementDescs        = INPUT_ELEMENTS;
         desc.InputLayout.NumElements               = static_cast<UINT>(std::size(INPUT_ELEMENTS));
         desc.RasterizerState.FillMode              = D3D12_FILL_MODE_SOLID;
-        desc.RasterizerState.CullMode              = D3D12_CULL_MODE_NONE;
+        desc.RasterizerState.CullMode              = D3D12_CULL_MODE_BACK;
         desc.RasterizerState.FrontCounterClockwise = FALSE;
         desc.RasterizerState.DepthBias             = D3D12_DEFAULT_DEPTH_BIAS;
         desc.RasterizerState.DepthBiasClamp        = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
@@ -155,13 +183,6 @@ Application::Application()
         m_pipelineState = m_renderDevice.newGraphicsPipeline(desc);
     }
 
-    m_materials.push_back({0.1f, {0.56f, 0.57f, 0.58f}}); // iron
-    m_materials.push_back({0.1f, {0.95f, 0.64f, 0.54f}}); // copper
-    m_materials.push_back({0.1f, {0.91f, 0.92f, 0.92f}}); // aluminum
-    m_materials.push_back({0.1f, {0.95f, 0.93f, 0.88f}}); // silver
-    m_materials.push_back({0.1f, {1.00f, 0.71f, 0.29f}}); // gold
-
-    m_camera.setPosition({0.0f, 0.0f, -4.5f});
     m_swapChain.setClearColor(colors::Black);
 }
 
@@ -199,7 +220,7 @@ auto Application::run() -> void {
     }
 }
 
-auto Application::update(float deltaTime) -> void {
+auto Application::updateCamera(float deltaTime) -> void {
     if (isKeyPressed(KeyCode::W))
         m_camera.translate({0, 0, deltaTime});
     if (isKeyPressed(KeyCode::A))
@@ -208,7 +229,16 @@ auto Application::update(float deltaTime) -> void {
         m_camera.translate({0, 0, -deltaTime});
     if (isKeyPressed(KeyCode::D))
         m_camera.translate({deltaTime, 0, 0});
+    if (isKeyPressed(KeyCode::MouseLeft)) {
+        m_camera.rotate(static_cast<float>(m_cursorY - m_cursorLastY) * deltaTime,
+                        static_cast<float>(m_cursorX - m_cursorLastX) * deltaTime, 0.0f);
+        m_cursorLastX = m_cursorX;
+        m_cursorLastY = m_cursorY;
+    }
+}
 
+auto Application::update(float deltaTime) -> void {
+    this->updateCamera(deltaTime);
     auto &backBuffer = m_swapChain.backBuffer();
 
     RenderPass renderPass{};
@@ -230,61 +260,62 @@ auto Application::update(float deltaTime) -> void {
     m_commandBuffer.setPipelineState(m_pipelineState);
     m_commandBuffer.setPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-    std::array<Light, 4> lights{
-        Light{
-            {4.076245307922363f, 5.903861999511719f, -1.0054539442062378f},
-            0.0f,
-            {1.0f, 1.0f, 1.0f},
-            0.0f,
-        },
-        Light{
-            {4.076245307922363f, -5.903861999511719f, -1.0054539442062378f},
-            0.0f,
-            {1.0f, 1.0f, 1.0f},
-            0.0f,
-        },
-        Light{
-            {-4.076245307922363f, 5.903861999511719f, -1.0054539442062378f},
-            0.0f,
-            {1.0f, 1.0f, 1.0f},
-            0.0f,
-        },
-        Light{
-            {-4.076245307922363f, -5.903861999511719f, -1.0054539442062378f},
-            0.0f,
-            {1.0f, 1.0f, 1.0f},
-            0.0f,
-        },
-    };
+    Lights lights{};
+    lights.numLights         = 4;
+    lights.lightPositions[0] = {4.076245307922363f, 5.903861999511719f, -1.0054539442062378f, 1.0f};
+    lights.lightPositions[1] = {4.076245307922363f, -5.903861999511719f, -1.0054539442062378f,
+                                1.0f};
+    lights.lightPositions[2] = {-4.076245307922363f, 5.903861999511719f, -1.0054539442062378f,
+                                1.0f};
+    lights.lightPositions[3] = {-4.076245307922363f, -5.903861999511719f, -1.0054539442062378f,
+                                1.0f};
+    lights.lightColors[0]    = {1.0f, 1.0f, 1.0f, 1.0f};
+    lights.lightColors[1]    = {1.0f, 1.0f, 1.0f, 1.0f};
+    lights.lightColors[2]    = {1.0f, 1.0f, 1.0f, 1.0f};
+    lights.lightColors[3]    = {1.0f, 1.0f, 1.0f, 1.0f};
 
     m_model.render([this, &renderPass, &lights](const Mesh &mesh, const Matrix4 &modelTransform) {
         m_commandBuffer.beginRenderPass(renderPass);
-        m_commandBuffer.setVertexBuffer(0, mesh.positionBuffer, mesh.positionCount,
-                                        mesh.positionStride);
-        m_commandBuffer.setVertexBuffer(1, mesh.normalBuffer, mesh.normalCount, mesh.normalStride);
-        m_commandBuffer.setIndexBuffer(mesh.indexBuffer, mesh.indexCount, mesh.indexStride);
-
-        // Set object position.
-        m_commandBuffer.setGraphicsConstant(0, 0, 0.0f);
-        m_commandBuffer.setGraphicsConstant(0, 1, 0.0f);
-        m_commandBuffer.setGraphicsConstant(0, 2, 0.0f);
+        m_commandBuffer.setVertexBuffer(0, mesh.position.buffer, mesh.position.count,
+                                        mesh.position.stride);
+        m_commandBuffer.setVertexBuffer(1, mesh.normal.buffer, mesh.normal.count,
+                                        mesh.normal.stride);
+        m_commandBuffer.setIndexBuffer(mesh.index.buffer, mesh.index.count, mesh.index.stride);
 
         Transform transform{
-            /* model      = */ modelTransform,
-            /* view       = */ m_camera.viewMatrix(),
-            /* projection = */ m_camera.projectionMatrix(),
-            /* cameraPos  = */ m_camera.position(),
+            /* model             = */ modelTransform,
+            /* modelInvTranspose = */ modelTransform.inversed().transposed(),
+            /* view              = */ m_camera.viewMatrix(),
+            /* projection        = */ m_camera.projectionMatrix(),
+            /* cameraPos         = */ m_camera.position(),
         };
 
-        m_commandBuffer.setGraphicsConstantBuffer(1, 0, &transform, sizeof(transform));
-        m_commandBuffer.setGraphicsConstantBuffer(1, 1, &lights, sizeof(lights));
-        m_commandBuffer.setGraphicsConstantBuffer(1, 2, &m_materials[0], sizeof(Material));
+        m_commandBuffer.setGraphicsConstantBuffer(0, 0, &transform, sizeof(transform));
+
+        Material material{
+            /* emissive  = */ mesh.material->emissiveFactor,
+            /* baseColor = */ mesh.material->baseColor,
+        };
+
+        m_commandBuffer.setGraphicsConstantBuffer(0, 1, &material, sizeof(material));
+        m_commandBuffer.setGraphicsConstantBuffer(0, 2, &lights, sizeof(lights));
+
+        m_commandBuffer.setGraphicsDescriptor(
+            0, 3, mesh.material->baseColorTexture->shaderResourceView());
+        m_commandBuffer.setGraphicsDescriptor(
+            0, 4, mesh.material->metallicRoughnessTexture->shaderResourceView());
+        m_commandBuffer.setGraphicsDescriptor(0, 5,
+                                              mesh.material->normalTexture->shaderResourceView());
+        m_commandBuffer.setGraphicsDescriptor(0, 6,
+                                              mesh.material->emissiveTexture->shaderResourceView());
+
+        m_commandBuffer.setGraphicsDescriptor(1, 0, m_linearSampler.descriptor());
 
         auto [width, height] = m_window.frameSize();
         m_commandBuffer.setViewport(0, 0, width, height);
         m_commandBuffer.setScissorRect(0, 0, width, height);
 
-        m_commandBuffer.drawIndexed(mesh.indexCount, 0);
+        m_commandBuffer.drawIndexed(mesh.index.count, 0);
         m_commandBuffer.endRenderPass();
     });
 

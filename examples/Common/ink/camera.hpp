@@ -8,7 +8,7 @@ class Camera {
 public:
     /// @brief
     ///   Create a new camera with the specified parameters.
-    Camera(Vector3 pos, float fov, float aspect, float zNear = 1.0f, float zFar = 1000.0f) noexcept
+    Camera(Vector3 pos, float fov, float aspect, float zNear = 0.1f, float zFar = 1000.0f) noexcept
         : m_position(pos),
           m_rotation(1.0f),
           m_fovY(fov),
@@ -51,7 +51,10 @@ public:
     }
 
     auto translate(Vector3 offset) noexcept -> void {
-        m_position += offset;
+        Vector3 dir   = front();
+        Vector3 right = cross({0.0f, 1.0f, 0.0f}, dir);
+        Vector3 up    = cross(right, dir);
+        m_position += offset.x * right + offset.y * up + offset.z * dir;
         m_isViewMatrixDirty = true;
     }
 

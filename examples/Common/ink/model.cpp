@@ -8,6 +8,16 @@
 
 using namespace ink;
 
+namespace {
+
+[[nodiscard]] auto startsWith(std::string_view str, std::string_view match) noexcept -> bool {
+    if (match.size() > str.size())
+        return false;
+    return !std::string_view::traits_type::compare(str.data(), match.data(), match.size());
+}
+
+} // namespace
+
 ink::Model::Model(RenderDevice &renderDevice, std::string_view path, bool isBinary)
     : m_buffers(), m_textures(), m_materials(), m_nodes() {
     tinygltf::TinyGLTF gltfLoader;
@@ -112,7 +122,8 @@ ink::Model::Model(RenderDevice &renderDevice, std::string_view path, bool isBina
     }
 
     { // Load nodes via BFS.
-        const auto &scene = gltfModel.scenes[gltfModel.defaultScene];
+        const auto &scene =
+            gltfModel.scenes[gltfModel.defaultScene == -1 ? 0 : gltfModel.defaultScene];
         std::queue<std::pair<const tinygltf::Node *, Node *>> nodeQueue;
 
         auto convertNode = [this, &gltfModel](const tinygltf::Node &gltfNode) -> Node {
@@ -178,15 +189,15 @@ ink::Model::Model(RenderDevice &renderDevice, std::string_view path, bool isBina
                     const auto  indexCount  = static_cast<std::uint32_t>(accessor.count);
                     const auto  indexOffset = accessor.byteOffset + bufferView.byteOffset;
 
-                    mesh.indexBuffer = m_buffers[bufferID].gpuAddress() + indexOffset;
-                    mesh.indexCount  = indexCount;
+                    mesh.index.buffer = m_buffers[bufferID].gpuAddress() + indexOffset;
+                    mesh.index.count  = indexCount;
 
                     switch (accessor.componentType) {
                     case TINYGLTF_PARAMETER_TYPE_UNSIGNED_INT:
-                        mesh.indexStride = 4;
+                        mesh.index.stride = 4;
                         break;
                     case TINYGLTF_PARAMETER_TYPE_UNSIGNED_SHORT:
-                        mesh.indexStride = 2;
+                        mesh.index.stride = 2;
                         break;
                     default:
                         throw Exception("Unsupported index type.");
@@ -194,9 +205,8 @@ ink::Model::Model(RenderDevice &renderDevice, std::string_view path, bool isBina
                 }
 
                 const auto &attributes = primitive.attributes;
-
-                if (auto iter = attributes.find("POSITION"); iter != attributes.end()) {
-                    const auto &accessor   = gltfModel.accessors[iter->second];
+                for (const auto &[key, index] : attributes) {
+                    const auto &accessor   = gltfModel.accessors[index];
                     const auto &bufferView = gltfModel.bufferViews[accessor.bufferView];
 
                     const auto bufferID     = static_cast<std::size_t>(bufferView.buffer);
@@ -204,93 +214,43 @@ ink::Model::Model(RenderDevice &renderDevice, std::string_view path, bool isBina
                     const auto count        = static_cast<std::uint32_t>(accessor.count);
                     const auto stride = static_cast<std::uint32_t>(accessor.ByteStride(bufferView));
 
-                    mesh.positionBuffer = m_buffers[bufferID].gpuAddress() + bufferOffset;
-                    mesh.positionCount  = count;
-                    mesh.positionStride = stride;
-                }
-
-                if (auto iter = attributes.find("NORMAL"); iter != attributes.end()) {
-                    const auto &accessor   = gltfModel.accessors[iter->second];
-                    const auto &bufferView = gltfModel.bufferViews[accessor.bufferView];
-
-                    const auto bufferID     = static_cast<std::size_t>(bufferView.buffer);
-                    const auto bufferOffset = accessor.byteOffset + bufferView.byteOffset;
-                    const auto count        = static_cast<std::uint32_t>(accessor.count);
-                    const auto stride = static_cast<std::uint32_t>(accessor.ByteStride(bufferView));
-
-                    mesh.normalBuffer = m_buffers[bufferID].gpuAddress() + bufferOffset;
-                    mesh.normalCount  = count;
-                    mesh.normalStride = stride;
-                }
-
-                if (auto iter = attributes.find("TEXCOORD"); iter != attributes.end()) {
-                    const auto &accessor   = gltfModel.accessors[iter->second];
-                    const auto &bufferView = gltfModel.bufferViews[accessor.bufferView];
-
-                    const auto bufferID     = static_cast<std::size_t>(bufferView.buffer);
-                    const auto bufferOffset = accessor.byteOffset + bufferView.byteOffset;
-                    const auto count        = static_cast<std::uint32_t>(accessor.count);
-                    const auto stride = static_cast<std::uint32_t>(accessor.ByteStride(bufferView));
-
-                    mesh.texCoordBuffer = m_buffers[bufferID].gpuAddress() + bufferOffset;
-                    mesh.texCoordCount  = count;
-                    mesh.texCoordStride = stride;
-                }
-
-                if (auto iter = attributes.find("TANGENT"); iter != attributes.end()) {
-                    const auto &accessor   = gltfModel.accessors[iter->second];
-                    const auto &bufferView = gltfModel.bufferViews[accessor.bufferView];
-
-                    const auto bufferID     = static_cast<std::size_t>(bufferView.buffer);
-                    const auto bufferOffset = accessor.byteOffset + bufferView.byteOffset;
-                    const auto count        = static_cast<std::uint32_t>(accessor.count);
-                    const auto stride = static_cast<std::uint32_t>(accessor.ByteStride(bufferView));
-
-                    mesh.tangentBuffer = m_buffers[bufferID].gpuAddress() + bufferOffset;
-                    mesh.tangentCount  = count;
-                    mesh.tangentStride = stride;
-                }
-
-                if (auto iter = attributes.find("COLOR"); iter != attributes.end()) {
-                    const auto &accessor   = gltfModel.accessors[iter->second];
-                    const auto &bufferView = gltfModel.bufferViews[accessor.bufferView];
-
-                    const auto bufferID     = static_cast<std::size_t>(bufferView.buffer);
-                    const auto bufferOffset = accessor.byteOffset + bufferView.byteOffset;
-                    const auto count        = static_cast<std::uint32_t>(accessor.count);
-                    const auto stride = static_cast<std::uint32_t>(accessor.ByteStride(bufferView));
-
-                    mesh.colorBuffer = m_buffers[bufferID].gpuAddress() + bufferOffset;
-                    mesh.colorCount  = count;
-                    mesh.colorStride = stride;
-                }
-
-                if (auto iter = attributes.find("JOINT"); iter != attributes.end()) {
-                    const auto &accessor   = gltfModel.accessors[iter->second];
-                    const auto &bufferView = gltfModel.bufferViews[accessor.bufferView];
-
-                    const auto bufferID     = static_cast<std::size_t>(bufferView.buffer);
-                    const auto bufferOffset = accessor.byteOffset + bufferView.byteOffset;
-                    const auto count        = static_cast<std::uint32_t>(accessor.count);
-                    const auto stride = static_cast<std::uint32_t>(accessor.ByteStride(bufferView));
-
-                    mesh.jointBuffer = m_buffers[bufferID].gpuAddress() + bufferOffset;
-                    mesh.jointCount  = count;
-                    mesh.jointStride = stride;
-                }
-
-                if (auto iter = attributes.find("WEIGHT"); iter != attributes.end()) {
-                    const auto &accessor   = gltfModel.accessors[iter->second];
-                    const auto &bufferView = gltfModel.bufferViews[accessor.bufferView];
-
-                    const auto bufferID     = static_cast<std::size_t>(bufferView.buffer);
-                    const auto bufferOffset = accessor.byteOffset + bufferView.byteOffset;
-                    const auto count        = static_cast<std::uint32_t>(accessor.count);
-                    const auto stride = static_cast<std::uint32_t>(accessor.ByteStride(bufferView));
-
-                    mesh.weightBuffer = m_buffers[bufferID].gpuAddress() + bufferOffset;
-                    mesh.weightCount  = count;
-                    mesh.weightStride = stride;
+                    if (key == "POSITION") {
+                        mesh.position.buffer = m_buffers[bufferID].gpuAddress() + bufferOffset;
+                        mesh.position.count  = count;
+                        mesh.position.stride = stride;
+                    } else if (key == "NORMAL") {
+                        mesh.normal.buffer = m_buffers[bufferID].gpuAddress() + bufferOffset;
+                        mesh.normal.count  = count;
+                        mesh.normal.stride = stride;
+                    } else if (key == "TANGENT") {
+                        mesh.tangent.buffer = m_buffers[bufferID].gpuAddress() + bufferOffset;
+                        mesh.tangent.count  = count;
+                        mesh.tangent.stride = stride;
+                    } else if (startsWith(key, "TEXCOORD_")) {
+                        const auto i = std::stoi(key.substr(9));
+                        assert(i < 16);
+                        mesh.texCoord[i].buffer = m_buffers[bufferID].gpuAddress() + bufferOffset;
+                        mesh.texCoord[i].count  = count;
+                        mesh.texCoord[i].stride = stride;
+                    } else if (startsWith(key, "COLOR_")) {
+                        const auto i = std::stoi(key.substr(6));
+                        assert(i < 16);
+                        mesh.color[i].buffer = m_buffers[bufferID].gpuAddress() + bufferOffset;
+                        mesh.color[i].count  = count;
+                        mesh.color[i].stride = stride;
+                    } else if (startsWith(key, "JOINTS_")) {
+                        const auto i = std::stoi(key.substr(7));
+                        assert(i < 16);
+                        mesh.joint[i].buffer = m_buffers[bufferID].gpuAddress() + bufferOffset;
+                        mesh.joint[i].count  = count;
+                        mesh.joint[i].stride = stride;
+                    } else if (startsWith(key, "WEIGHTS_")) {
+                        const auto i = std::stoi(key.substr(8));
+                        assert(i < 16);
+                        mesh.weight[i].buffer = m_buffers[bufferID].gpuAddress() + bufferOffset;
+                        mesh.weight[i].count  = count;
+                        mesh.weight[i].stride = stride;
+                    }
                 }
 
                 if (primitive.material != -1)
