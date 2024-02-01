@@ -2,7 +2,6 @@
 #include "ink/core/exception.hpp"
 #include "ink/core/window.hpp"
 #include "ink/math/numbers.hpp"
-#include "ink/math/quaternion.hpp"
 #include "ink/model.hpp"
 #include "ink/render/device.hpp"
 

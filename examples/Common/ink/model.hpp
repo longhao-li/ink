@@ -4,8 +4,6 @@
 #include "ink/render/resource.hpp"
 
 #include <list>
-#include <memory>
-#include <optional>
 #include <queue>
 #include <string_view>
 #include <vector>
@@ -120,6 +118,28 @@ public:
     /// @throw RenderAPIException
     ///   Thrown if failed to create GPU buffers.
     Model(RenderDevice &renderDevice, std::string_view path, bool isBinary);
+
+    /// @brief
+    ///   Create a new box model.
+    ///
+    /// @param renderDevice
+    ///   The render device that is used to create GPU buffers.
+    /// @param width
+    ///   Width of the box. The x axis will be set to -width / 2 and width / 2.
+    /// @param height
+    ///   Height of the box. The y axis will be set to -height / 2 and height / 2.
+    /// @param depth
+    ///   Depth of the box. The z axis will be set to -depth / 2 and depth / 2.
+    /// @param material
+    ///   Material of the box.
+    ///
+    /// @throw RenderAPIException
+    ///   Thrown if failed to create GPU buffers.
+    Model(RenderDevice   &renderDevice,
+          float           width,
+          float           height,
+          float           depth,
+          const Material &material);
 
     /// @brief
     ///   Destroy this model and release all resources.

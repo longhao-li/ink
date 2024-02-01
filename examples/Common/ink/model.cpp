@@ -281,4 +281,93 @@ ink::Model::Model(RenderDevice &renderDevice, std::string_view path, bool isBina
     }
 }
 
+ink::Model::Model(
+    RenderDevice &renderDevice, float width, float height, float depth, const Material &material)
+    : m_buffers(), m_textures(), m_materials(), m_nodes() {
+    const std::vector<Vector3> vertexData{
+        // Position data in counter clockwise order.
+        Vector3{-width / 2, -height / 2, -depth / 2},
+        Vector3{width / 2, -height / 2, -depth / 2},
+        Vector3{width / 2, height / 2, -depth / 2},
+        Vector3{-width / 2, height / 2, -depth / 2},
+        Vector3{-width / 2, -height / 2, depth / 2},
+        Vector3{width / 2, -height / 2, depth / 2},
+        Vector3{width / 2, height / 2, depth / 2},
+        Vector3{-width / 2, height / 2, depth / 2},
+
+        // Normal data in counter clockwise order.
+        Vector3{-1.0f, -1.0f, -1.0f}.normalized(),
+        Vector3{1.0f, -1.0f, -1.0f}.normalized(),
+        Vector3{1.0f, 1.0f, -1.0f}.normalized(),
+        Vector3{-1.0f, 1.0f, -1.0f}.normalized(),
+        Vector3{-1.0f, -1.0f, 1.0f}.normalized(),
+        Vector3{1.0f, -1.0f, 1.0f}.normalized(),
+        Vector3{1.0f, 1.0f, 1.0f}.normalized(),
+        Vector3{-1.0f, 1.0f, 1.0f}.normalized(),
+    };
+
+    // clang-format off
+    const std::vector<std::uint16_t> indexData {
+        // Front face(-z), counter clockwise order.
+        2, 1, 0, 3, 2, 0,
+        // Back face(z), counter clockwise order.
+        5, 6, 4, 6, 7, 4,
+        // Left face(-x), counter clockwise order.
+        1, 5, 4, 0, 1, 4,
+        // Right face(x), counter clockwise order.
+        6, 2, 3, 7, 6, 3,
+        // Top face(y), counter clockwise order.
+        6, 5, 1, 2, 6, 1,
+        // Bottom face(-y), counter clockwise order.
+        3, 0, 4, 7, 3, 4,
+    };
+    // clang-format on
+
+    m_buffers.emplace_back(renderDevice.newGpuBuffer(vertexData.size() * sizeof(Vector3)));
+    m_buffers.emplace_back(renderDevice.newGpuBuffer(indexData.size() * sizeof(std::uint16_t)));
+
+    { // Upload buffer data.
+        CommandBuffer cmdBuffer{renderDevice.newCommandBuffer()};
+        cmdBuffer.copyBuffer(vertexData.data(), m_buffers[0], 0,
+                             vertexData.size() * sizeof(Vector3));
+        cmdBuffer.copyBuffer(indexData.data(), m_buffers[1], 0,
+                             indexData.size() * sizeof(std::uint16_t));
+        cmdBuffer.transition(m_buffers[0], D3D12_RESOURCE_STATE_GENERIC_READ);
+        cmdBuffer.transition(m_buffers[1], D3D12_RESOURCE_STATE_GENERIC_READ);
+        cmdBuffer.submit();
+    }
+
+    m_materials.push_back(material);
+
+    { // Create node.
+        Node node{
+            /* parent      = */ nullptr,
+            /* children    = */ {},
+            /* mesh        = */ {},
+            /* transform   = */ Matrix4{1.0f},
+            /* translation = */ {},
+            /* scale       = */ Vector3{1.0f},
+            /* rotation    = */ Quaternion{1.0f},
+        };
+
+        Mesh mesh{};
+        mesh.index.buffer = m_buffers[1].gpuAddress();
+        mesh.index.count  = static_cast<std::uint32_t>(indexData.size());
+        mesh.index.stride = sizeof(std::uint16_t);
+
+        mesh.position.buffer = m_buffers[0].gpuAddress();
+        mesh.position.count  = 8;
+        mesh.position.stride = sizeof(Vector3);
+
+        mesh.normal.buffer = m_buffers[0].gpuAddress() + 8 * sizeof(Vector3);
+        mesh.normal.count  = 8;
+        mesh.normal.stride = sizeof(Vector3);
+
+        mesh.material = &m_materials[0];
+
+        node.meshes.push_back(mesh);
+        m_nodes.push_back(node);
+    }
+}
+
 ink::Model::~Model() noexcept = default;
